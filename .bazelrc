@@ -155,3 +155,7 @@ test --config=v2
 
 # Enable XLA
 build:xla --define=with_xla_support=true
+	
+# Load rc file with user-specific options.
+try-import %workspace%/.bazelrc.user
+
