@@ -126,7 +126,7 @@ def parse_env_vars(env_vars):
 
 def run_and_get_environment(commands):
   supressed_commands = (f"{command} 1>/dev/null"
-                        for command in environment_setup_commands)
+                        for command in commands)
   combined_commands = " && ".join(supressed_commands)
   get_env_command = ["env", "-i", "bash", "-c", f"{combined_commands} && env"]
 
