@@ -125,8 +125,7 @@ def parse_env_vars(env_vars):
 
 
 def run_and_get_environment(commands):
-  supressed_commands = (f"{command} 1>/dev/null"
-                        for command in commands)
+  supressed_commands = (f"{command} 1>/dev/null" for command in commands)
   combined_commands = " && ".join(supressed_commands)
   get_env_command = ["env", "-i", "bash", "-c", f"{combined_commands} && env"]
 
@@ -166,7 +165,7 @@ def write_user_bazelrc(args, environment):
       shutil.copy(user_bazelrc_path, backup_user_bazelrc_path)
 
     # Paths pointing to venv, Poplar, and TensorFlow.
-    with open(".bazelrc.user", "w") as user_bazelrc:
+    with open(user_bazelrc_path, "w") as user_bazelrc:
       user_bazelrc.write(f"build --action_env=PATH='{environment['PATH']}'\n")
       user_bazelrc.write(f"build --action_env=LD_LIBRARY_PATH='{environment['LD_LIBRARY_PATH']}'\n")  # yapf: disable
       user_bazelrc.write(f"build --action_env=PYTHONPATH='{environment['PYTHONPATH']}'\n")  # yapf: disable
