@@ -1,0 +1,3 @@
+path: "tensorflow.keras.ipu"
+tf_module {
+}

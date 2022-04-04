@@ -89,4 +89,9 @@ tf_module {
     name: "Input"
     argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\', \'type_spec\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
+  # IPU specific
+  member {
+    name: "ipu"
+    mtype: "<type \'module\'>"
+  }
 }

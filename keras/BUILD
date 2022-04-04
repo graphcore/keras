@@ -50,6 +50,7 @@ py_library(
         "//keras/distribute",
         "//keras/estimator",
         "//keras/feature_column",
+        "//keras/ipu",
         "//keras/layers",
         "//keras/layers/legacy_rnn:rnn_cell_impl",
         "//keras/legacy_tf_layers:layers",
