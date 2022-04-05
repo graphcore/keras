@@ -30,6 +30,9 @@
             "gc-copyright.script_path": "../../../../scripts/check_copyright.py",
             "include": [
                  "(.*)"
+            ],
+            "exclude": [
+                 "(^keras/ipu/docs/.*\\.py$)"
             ]
         }
     }
