@@ -133,8 +133,11 @@ def generate_install_pip_package_commands(args):
   for package in packages:
     commands.append(f"pip3 install \"{package}\"")
 
-  commands.append(f"pip3 install --force-reinstall {args.tensorflow_wheel_path}")
-  commands.append("pip3 uninstall -y keras-nightly")
+  commands.append(
+      f"pip3 install --force-reinstall {args.tensorflow_wheel_path}")
+
+  # Remove all keras packages so that this build is used.
+  commands.append("pip3 uninstall -y keras*")
 
   return commands
 
