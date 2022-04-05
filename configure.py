@@ -109,10 +109,34 @@ def generate_install_latest_pip_commands():
 
 
 def generate_install_pip_package_commands(args):
-  return [
-      "pip3 install --upgrade setuptools wheel",
-      f"pip3 install --force-reinstall {args.tensorflow_wheel_path}"
-  ]
+  commands = ["pip3 install --upgrade setuptools wheel"]
+
+  # Load the requirements file and ignore tf-nightly.
+  requirements_file = 'requirements.txt'
+  if not os.path.exists(requirements_file):
+    exit_with_error(f"Cannot locate {requirements_file}")
+
+  with open(requirements_file, 'r') as file:
+    packages = file.read().split('\n')
+
+  def filter_fn(x):
+    if x.startswith('#'):
+      return False
+
+    if x.startswith('tf-nightly'):
+      return False
+
+    return len(x)
+
+  packages = [x for x in packages if filter_fn(x)]
+
+  for package in packages:
+    commands.append(f"pip3 install \"{package}\"")
+
+  commands.append(f"pip3 install --force-reinstall {args.tensorflow_wheel_path}")
+  commands.append("pip3 uninstall -y keras-nightly")
+
+  return commands
 
 
 def parse_env_vars(env_vars):
