@@ -27,6 +27,10 @@ from keras.engine import base_layer_utils
 from keras.saving.saved_model import json_utils
 from keras.utils import tf_utils
 
+# Begin IPU specific changes.
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
+# End IPU specific changes.
+
 _CONSTANT_VALUE = '_CONSTANT_VALUE'
 
 
@@ -108,6 +112,10 @@ class Node:
     # Cached for performance.
     self.flat_input_ids = [str(id(t)) for t in self._keras_inputs]
     self.flat_output_ids = [str(id(t)) for t in tf.nest.flatten(self.outputs)]
+
+    # Begin IPU specific changes.
+    _set_pipeline_stage_from_strategy(self)
+    # Begin IPU specific changes.
 
   @property
   def keras_inputs(self):
@@ -285,3 +293,12 @@ class KerasHistory(
 
 def is_keras_tensor(obj):
   return hasattr(obj, '_keras_history')
+
+# Begin IPU specific changes
+def _set_pipeline_stage_from_strategy(instance):
+  if ds_context.has_strategy():
+    strategy = ds_context.get_strategy()
+    if hasattr(strategy, "_pipeline_stage"):
+      stage = strategy._pipeline_stage
+      instance._pipeline_stage = stage
+# End IPU specific changes

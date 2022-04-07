@@ -318,6 +318,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     super(Model, self).__setattr__(name, value)
 
   @generic_utils.default
+  @base_layer.extension_delegate
   def build(self, input_shape):
     """Builds the model based on input shapes received.
 
@@ -596,6 +597,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     return tf.nest.map_structure(_get_single_optimizer, optimizer)
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
+  @base_layer.extension_delegate
   def _reset_compile_cache(self):
     self.train_function = None
     self.test_function = None
@@ -873,6 +875,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     return self.train_function
 
+  @base_layer.extension_delegate
   def fit(self,
           x=None,
           y=None,
@@ -1349,6 +1352,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     return self.test_function
 
+  @base_layer.extension_delegate
   def evaluate(self,
                x=None,
                y=None,
@@ -1607,6 +1611,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.predict_function = predict_function
     return self.predict_function
 
+  @base_layer.extension_delegate
   def predict(self,
               x,
               batch_size=None,
@@ -2382,6 +2387,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     }
     return model_config
 
+  @base_layer.extension_delegate
   def get_config(self):
     raise NotImplementedError
 
@@ -2392,6 +2398,30 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # of `Functional` but only inherits from the `Model` class, we have to call
     # `cls(...)` instead of `Functional.from_config`.
     from keras.engine import functional  # pylint: disable=g-import-not-at-top
+
+    # Begin IPU specific changes.
+    # TODO(T57251) : Enable this once the extensions are ported.
+    if not (cls is Model or issubclass(cls, functional.Functional)):
+      # If this is a subclassed model (which hasn't overridden from_config).
+      try:
+        instance = cls()
+      except TypeError:
+        # If the constructor for the model requires parameters we do not know
+        # how to construct it.
+        raise NotImplementedError(
+            f"Failed to construct subclassed model of type {cls.__name__} from "
+            f"config. Subclassed models which require parameters in their "
+            f"constructors must override the `from_config` function to be "
+            f"compatible with saving/loading.")
+
+      if base_layer.check_if_extension_delegate_exists(
+        "deserialize_from_config", instance):
+        base_layer.extension_delegate_if_exists(
+          "deserialize_from_config", instance, config)
+
+        return instance
+    # End IPU specific changes.
+
     with generic_utils.SharedObjectLoadingScope():
       input_tensors, output_tensors, created_layers = (
           functional.reconstruct_from_config(config, custom_objects))
@@ -2645,6 +2675,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """
     return self._get_save_spec(dynamic_batch, inputs_only=False)
 
+  @base_layer.extension_delegate
   def _assert_weights_created(self):
     """Asserts that all the weights for the model have been created.
 
@@ -2799,6 +2830,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
+  @base_layer.extension_delegate
   def _list_functions_for_serialization(self, serialization_cache):
     # SavedModel needs to ignore the execution functions.
     train_function = self.train_function

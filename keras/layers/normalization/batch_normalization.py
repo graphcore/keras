@@ -274,7 +274,8 @@ class BatchNormalizationBase(Layer):
   @property
   def _param_dtype(self):
     # Raise parameters of fp16 batch norm to fp32
-    if self.dtype == tf.float16 or self.dtype == tf.bfloat16:
+    # IPU specific change below -- allow parameters to be float16 type.
+    if self.dtype == tf.bfloat16:
       return tf.float32
     else:
       return self.dtype or tf.float32

@@ -1220,6 +1220,12 @@ def strategy_supports_loss_scaling():
   # gradients are unscaled once per compute replica, but they should be unscaled
   # once per variable replica. When there is one variable replica for each
   # compute replica, this works fine, but otherwise issues will occur.
+
+  # Begin IPU specific changes.
+  if hasattr(strategy, 'supports_loss_scaling'):
+    return strategy.supports_loss_scaling
+  # End IPU specific changes.
+
   # TODO(reedwm): Support all strategies.
   return isinstance(strategy, (
       tf.distribute.MultiWorkerMirroredStrategy,

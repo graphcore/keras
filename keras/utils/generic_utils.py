@@ -805,6 +805,12 @@ def has_arg(fn, name, accept_all=False):
   Returns:
       bool, whether `fn` accepts a `name` keyword argument.
   """
+
+  # Begin IPU specific change.
+  if hasattr(fn, '__original_func__'):
+    return has_arg(fn.__original_func__, name)
+  # End IPU specific change.
+
   arg_spec = tf_inspect.getfullargspec(fn)
   if accept_all and arg_spec.varkw is not None:
     return True
