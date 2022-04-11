@@ -2400,7 +2400,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     from keras.engine import functional  # pylint: disable=g-import-not-at-top
 
     # Begin IPU specific changes.
-    # TODO(T57251) : Enable this once the extensions are ported.
     if not (cls is Model or issubclass(cls, functional.Functional)):
       # If this is a subclassed model (which hasn't overridden from_config).
       try:
