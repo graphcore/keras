@@ -44,7 +44,7 @@ def stage2():
 
 class IPUSequentialReplicatedTest(test_util.TensorFlowTestCase):
   @tu.test_uses_ipus(num_ipus=4)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2Replicas4(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 4
@@ -71,7 +71,7 @@ class IPUSequentialReplicatedTest(test_util.TensorFlowTestCase):
         self.assertEqual(0, np.sum(r != result[i - 1]))
 
   @tu.test_uses_ipus(num_ipus=2)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testCompareMnistPredictionsWithCpu(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 2

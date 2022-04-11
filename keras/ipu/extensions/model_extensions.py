@@ -19,10 +19,10 @@ IPU specific Keras Model subclass extensions
 import copy
 import types
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.util import deprecation
-from tensorflow.python.util import nest
+
 from keras.ipu.extensions import extensions_base
 from keras.engine import base_layer_utils
 from keras.engine import functional
@@ -97,7 +97,7 @@ class ModelLayerPipelineStageAssignment:
 
 
 class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abstract-method
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):  # pylint: disable=unused-argument
     extensions_base.KerasExtensionBase.__init__(self)
     self._pipeline_stage_assignment = []
@@ -162,7 +162,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     del input_shape
     return True
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _build_delegate(self, input_shape):
     # If we are not in a call context, then build has been called manually.
     # This is not annotated with generic_utils.default. This is so the Keras
@@ -222,7 +222,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
       outputs = self._trace_graph_network(inputs)
       self._update_graph_network(inputs, outputs)
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _create_input_with_dtypes(self, input_shape, input_dtype):
     if isinstance(input_shape, (list, tuple)):
       if all(d is None or isinstance(d, int) for d in input_shape):
@@ -250,7 +250,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
 
     return inputs
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _build_with_dtypes(self, input_shape, input_dtype):
     # Trace the graph with the given input shapes and dtypes, and update the
     # graph network.
@@ -339,16 +339,9 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     """
     self._set_asynchronous_callbacks_impl(asynchronous)
 
-  @deprecation.deprecated_args(
-      None, '`experimental_normalize_gradients=True` has been '
-      'deprecated and will be replaced in a future release with '
-      'the use of mean reduction when accumulating gradients. '
-      'Please update your optimizer settings.',
-      'experimental_normalize_gradients')
   def set_gradient_accumulation_options(
       self,
       gradient_accumulation_steps_per_replica=None,
-      experimental_normalize_gradients=None,
       gradient_accumulation_reduction_method=gradient_accumulation_optimizer.
       GradientAccumulationReductionMethod.SUM,
       **gradient_accumulation_optimizer_kwargs):
@@ -383,12 +376,6 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
         This value multiplied by the number of replicas needs to divide the
         `steps_per_execution` value the model has been compiled with. This value
         is saved/loaded when the model is saved/loaded.
-      experimental_normalize_gradients: If set to `True`, the gradients for each
-        step are first scaled by
-        `1/(gradient_accumulation_steps_per_replica * number of replicas)`
-        before being added to the gradient accumulation buffer. Note that this
-        option is experimental and the behavior might change in future releases.
-        This value is saved/loaded when the model is saved/loaded.
       reduction_method: Reduction method to use when accumulating gradients.
         During the iterations in each optimizer step, the computed gradients
         can either be directly summed up or scaled such that we compute a mean
@@ -410,22 +397,14 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     # pylint:enable=line-too-long
     self._set_gradient_accumulation_options_impl(
         gradient_accumulation_steps_per_replica,
-        experimental_normalize_gradients,
         gradient_accumulation_reduction_method,
         gradient_accumulation_optimizer_kwargs)
 
-  @deprecation.deprecated_args(
-      None, '`experimental_normalize_gradients=True` has been '
-      'deprecated and will be replaced in a future release with '
-      'the use of mean reduction when accumulating gradients. '
-      'Please update your pipeline settings.',
-      'experimental_normalize_gradients')
   def set_pipelining_options(
       self,
       gradient_accumulation_steps_per_replica=None,
       device_mapping=None,
       accumulate_outfeed=None,
-      experimental_normalize_gradients=None,
       gradient_accumulation_reduction_method=gradient_accumulation_optimizer.
       GradientAccumulationReductionMethod.SUM,
       **pipelining_kwargs):
@@ -482,12 +461,6 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
         `accumulate_outfeed`, model callbacks will be called with the same data
         for the batches which the data was accumulated for. This value is
         saved/loaded when the model is saved/loaded.
-      experimental_normalize_gradients: If set to `True`, the gradients for each
-        step are first scaled by
-        `1/(gradient_accumulation_steps_per_replica * number of replicas)`
-        before being added to the gradient accumulation buffer. Note that this
-        option is experimental and the behavior might change in future releases.
-        This value is saved/loaded when the model is saved/loaded.
       gradient_accumulation_reduction_method:  (Experimental)  Reduction method
         to use when accumulating gradients. During the iterations in each
         optimizer step, the computed gradients can either be directly summed up
@@ -505,7 +478,6 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     """
     self._set_pipelining_options_impl(gradient_accumulation_steps_per_replica,
                                       device_mapping, accumulate_outfeed,
-                                      experimental_normalize_gradients,
                                       gradient_accumulation_reduction_method,
                                       pipelining_kwargs)
 
@@ -577,14 +549,14 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
           return tuple(tensor.shape.as_list())
 
         if isinstance(inputs, (tuple, list, dict)):
-          input_shape = nest.map_structure(get_shape, inputs)
+          input_shape = tf.nest.map_structure(get_shape, inputs)
         else:
           input_shape = get_shape(inputs)
 
         self.build(input_shape)
       return self.call(inputs, **kwargs)
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _update_graph_network(self, inputs, outputs):
     # Call functional model code to setup graph network.
     self._init_graph_network(inputs, outputs)
@@ -741,7 +713,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
 
     return post_order_per_stage, new_post_order_node_execution
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _get_pipeline_post_order(self):
     try:
       post_order_per_stage, _ = self._get_pipelined_post_order(
@@ -757,7 +729,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
           f"objects instead of plain shapes.") from e
     return post_order_per_stage
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def get_pipeline_stage_assignment(self):
     """Returns the pipeline stage assignment of the layers in the model.
 
@@ -786,11 +758,11 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
 
     return output
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _validate_pipeline_stage_assignment(self, pipeline_stage_assignment):
     self._get_pipelined_post_order(pipeline_stage_assignment)
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def set_pipeline_stage_assignment(self, pipeline_stage_assignment):
     """Sets the pipeline stage assignment for all the layers in the model.
 
@@ -825,7 +797,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     # Pipelining has changed therefore functions need to be recompiled.
     self._reset_ipu_extension()
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def reset_pipeline_stage_assignment(self):
     """Resets the pipeline stage assignment so that the model is no longer
     pipelined."""
@@ -835,7 +807,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     # Pipelining has changed therefore functions need to be recompiled.
     self._reset_ipu_extension()
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def print_pipeline_stage_assignment_summary(self,
                                               line_length=None,
                                               print_fn=None):
@@ -853,7 +825,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     def print_assignment_fn(assignment, print_row):
       layer = assignment.layer
       node_index = str(assignment.node_index)
-      inbound_layers = nest.flatten(assignment.inbound_layers)
+      inbound_layers = tf.nest.flatten(assignment.inbound_layers)
       pipeline_stage = str(assignment.pipeline_stage)
 
       name = layer.name
@@ -883,7 +855,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
                                                        headers, column_widths,
                                                        line_length, print_fn)
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _get_pipeline_maximum_pipeline_stage(self):
     assert self._is_pipelined()
     if self._pipeline_maximum_stage is None:

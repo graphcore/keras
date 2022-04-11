@@ -23,7 +23,6 @@ from tensorflow.python import ipu
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
 
 
 def dataset_with_labels():
@@ -32,9 +31,9 @@ def dataset_with_labels():
   x3 = np.ones((8), dtype=np.float64)
   y1 = np.ones((1), dtype=np.float64)
   y2 = np.ones((1), dtype=np.float64)
-  ds_x = dataset_ops.Dataset.from_tensors((x1, x2, x3))
-  ds_y = dataset_ops.Dataset.from_tensors((y1, y2))
-  ds_xy = dataset_ops.Dataset.zip(
+  ds_x = tf.data.Dataset.from_tensors((x1, x2, x3))
+  ds_y = tf.data.Dataset.from_tensors((y1, y2))
+  ds_xy = tf.data.Dataset.zip(
       (ds_x, ds_y)).repeat(16).batch(2, drop_remainder=True)
   return ds_xy
 
@@ -70,9 +69,9 @@ def model_fn(nested_outputs=False):
   return ((input_1, input_2, input_3), (dense_3, dense_4))
 
 
-class KerasSyntheticDataTest(test.TestCase):
+class KerasSyntheticDataTest(tf.test.TestCase):
   @tu.skip_on_hw
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSyntheticDataFit(self):
     poplar_flags = os.environ.get("TF_POPLAR_FLAGS", "")
     poplar_flags += " --use_synthetic_data"
@@ -90,7 +89,7 @@ class KerasSyntheticDataTest(test.TestCase):
         model.fit(dataset_with_labels(), epochs=4)
 
   @tu.skip_on_hw
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSyntheticDataEvaluate(self):
     poplar_flags = os.environ.get("TF_POPLAR_FLAGS", "")
     poplar_flags += " --use_synthetic_data"
@@ -108,7 +107,7 @@ class KerasSyntheticDataTest(test.TestCase):
         model.evaluate(dataset_with_labels())
 
   @tu.skip_on_hw
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSyntheticDataPredict(self):
     poplar_flags = os.environ.get("TF_POPLAR_FLAGS", "")
     poplar_flags += " --use_synthetic_data"
@@ -126,7 +125,7 @@ class KerasSyntheticDataTest(test.TestCase):
         model.predict(numpy_data(), batch_size=2)
 
   @tu.skip_on_hw
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSyntheticDataPredictNestedOutput(self):
     poplar_flags = os.environ.get("TF_POPLAR_FLAGS", "")
     poplar_flags += " --use_synthetic_data"
@@ -145,7 +144,7 @@ class KerasSyntheticDataTest(test.TestCase):
         model.predict(numpy_data(), batch_size=2)
 
   @tu.test_uses_ipus(num_ipus=2)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSyntheticDataWithReplication(self):
     poplar_flags = os.environ.get("TF_POPLAR_FLAGS", "")
     poplar_flags += " --use_synthetic_data"
@@ -167,4 +166,4 @@ class KerasSyntheticDataTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

@@ -20,7 +20,6 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
 
 
 def simple_pipeline(x, layer_sizes, layer_stages, w=None):
@@ -49,7 +48,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
   constant_d = constant_op.constant(x_val, shape=[32])
   constant_l = constant_op.constant(y_val, shape=[2])
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -59,21 +58,21 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
   constant_d = constant_op.constant(x_val, shape=[32])
 
-  ds = dataset_ops.Dataset.from_tensors(constant_d)
+  ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
   return ds
 
 
-class IPUPipelineInputValidationTest(test.TestCase):
-  @test_util.run_v2_only
+class IPUPipelineInputValidationTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testBadStage(self):
     with self.assertRaisesRegex(ValueError, "is not a valid pipeline stage"):
       input_layer = keras.layers.Input(shape=(32))
       _ = simple_pipeline(input_layer, [2, 4], [0, -1])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMissingStage(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -88,7 +87,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
                                 gradient_accumulation_count=2,
                                 device_mapping=[0, 0])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testNotEnoughIPUs(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -102,7 +101,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
                                   "Current device has 1 IPUs attached"):
         m.replication_factor  # pylint: disable=pointless-statement
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testBadStageOrder(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -116,7 +115,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
                                 gradient_accumulation_count=2,
                                 device_mapping=[0, 0])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testCannotCallEagerly(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -133,7 +132,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           ValueError, "PipelineModel can only be called through the"):
         m(c)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testCannotUseKerasV1Optimizers(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -149,7 +148,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
         opt = keras.optimizers.SGD(lr=0.001)
         m.compile(opt, 'mse')
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMustCallCompileFit(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -164,7 +163,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           RuntimeError, "You must compile your model before training/testing"):
         m.fit(test_dataset(length=64))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMustCallCompileEvaluate(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -179,7 +178,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           RuntimeError, "You must compile your model before training/testing"):
         m.evaluate(test_dataset(length=64))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testNeedTupleDatasetFit(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -196,7 +195,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           ValueError, r"requires a dataset with a structure containing "):
         m.fit(test_inference_dataset(length=48))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testNeedTupleDatasetEvaluate(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -213,7 +212,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           ValueError, r"requires a dataset with a structure containing "):
         m.evaluate(test_inference_dataset(length=48))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testNeedNonTupleDatasetPredict(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -228,7 +227,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           ValueError, r"requires a dataset with a structure containing "):
         m.predict(test_dataset(length=48))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMismatchDatasetLengthToGradientAccumulationCount(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -245,7 +244,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           "PipelineModel requires the number of mini-batches in the dataset "):
         m.fit(test_dataset(length=64), epochs=4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testUnlimitedDatasetHasNoStepsPerEpoch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -261,7 +260,7 @@ class IPUPipelineInputValidationTest(test.TestCase):
           ValueError, "When using an infinitely repeating dataset, you"):
         m.fit(test_dataset(), epochs=4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testStepsPerEpochTooLargeForDataset(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -284,4 +283,4 @@ class IPUPipelineInputValidationTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

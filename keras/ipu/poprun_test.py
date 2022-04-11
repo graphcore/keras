@@ -27,7 +27,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ipu.horovod import popdist_strategy
 from tensorflow.python.ipu import horovod as hvd
 from tensorflow.python.ipu.ipu_outfeed_queue import IPUOutfeedQueue
-from tensorflow.python.platform import test
+
 from tensorflow.python.types.core import Tensor
 from keras import layers, losses
 from keras import Model, Input
@@ -51,7 +51,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
   constant_d = constant_op.constant(x_val, shape=[32])
   constant_l = constant_op.constant(y_val, shape=[1])
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.shard(num_shards=popdist.getNumInstances(),
                 index=popdist.getInstanceIndex())
@@ -373,4 +373,4 @@ class KerasPoprunTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  test.main()
+  tf.test.main()

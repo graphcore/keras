@@ -24,8 +24,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
+
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer as ga
@@ -97,7 +96,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
   constant_d = constant_op.constant(x_val, shape=[32])
   constant_l = constant_op.constant(y_val, shape=[2])
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -107,7 +106,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
   constant_d = constant_op.constant(x_val, shape=[32])
 
-  ds = dataset_ops.Dataset.from_tensors(constant_d)
+  ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -119,7 +118,7 @@ def test_language_dataset(length=None, batch_size=1):
   constant_d = constant_op.constant(1, shape=[32], dtype=np.int32)
   constant_l = constant_op.constant(2, shape=[32], dtype=np.int32)
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -144,9 +143,9 @@ class BatchCallbackCounter(keras.callbacks.Callback):
     return self._logs
 
 
-class IPUPipelineTest(test.TestCase, parameterized.TestCase):
+class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.parameters(list(ga.GradientAccumulationReductionMethod))
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitCpuMatch(self, reduction_method):
     experimental_normalize_gradients = \
         reduction_method == ga.GradientAccumulationReductionMethod.SUM
@@ -181,7 +180,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       ipu_weights = m.weights
     self.assertAllClose(cpu_weights, ipu_weights)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryStepsPerRun(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -206,7 +205,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(cb.count(), 6)
 
   @parameterized.parameters(list(ga.GradientAccumulationReductionMethod))
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitTwice(self, reduction_method):
     experimental_normalize_gradients = \
         reduction_method == ga.GradientAccumulationReductionMethod.SUM
@@ -269,7 +268,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       self.assert_num_reports(report_helper, 0)
 
   @parameterized.parameters(list(ga.GradientAccumulationReductionMethod))
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitMultipleOutputs(self, reduction_method):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -313,7 +312,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(len(losses), 2)
     self.assertTrue(losses[0] > losses[-1])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithLearningRateDecay(self):
     cfg = IPUConfig()
     tu.enable_ipu_events(cfg)
@@ -343,7 +342,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithExponentialDecayLearningRateSchedule(self):
     cfg = IPUConfig()
     tu.enable_ipu_events(cfg)
@@ -374,7 +373,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithPiecewiseConstantDecayLearningRateSchedule(self):
     cfg = IPUConfig()
     tu.enable_ipu_events(cfg)
@@ -405,7 +404,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithMetrics(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -436,7 +435,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(type(history.history['accuracy'][1]), float)
 
   @parameterized.parameters(list(ga.GradientAccumulationReductionMethod))
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitAndEvaluateAccumulateOutfeed(self, reduction_method):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -507,7 +506,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(cb.count(), cb_acc.count())
 
   @parameterized.parameters(list(ga.GradientAccumulationReductionMethod))
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitAccumulateOutfeedSetDtype(self, reduction_method):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -529,8 +528,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
                                activation=keras.activations.relu,
                                kernel_initializer=init)(y)
         # Add 100000 to make the loss too large for fp16.
-        x = keras.layers.Lambda(
-            lambda x: math_ops.cast(x + 100000, np.float16))(y)
+        x = keras.layers.Lambda(lambda x: tf.cast(x + 100000, np.float16))(y)
 
       m = keras.Model(input_layer, x)
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=0.0001)
@@ -572,7 +570,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(history.history['root_mean_squared_error'],
                           [99999.8046875])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEval_CpuMatch(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -595,7 +593,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
     # reason we set the relative tolerance to 1e-5.
     self.assertAllClose(result, cpu_result, rtol=1e-5)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredict_CpuMatch(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -615,15 +613,15 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(result, cpu_result)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testUint8(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
     cfg.auto_select_ipus = 2
     cfg.configure_ipu_system()
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(np.array(range(16)))
-    dataset = dataset.map(lambda x: math_ops.cast(x, dtype=np.uint8)).batch(
+    dataset = tf.data.Dataset.from_tensor_slices(np.array(range(16)))
+    dataset = dataset.map(lambda x: tf.cast(x, dtype=np.uint8)).batch(
         1, drop_remainder=True).batch(1, drop_remainder=True)
 
     strategy = ipu.ipu_strategy.IPUStrategyV1()
@@ -631,8 +629,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       inputs = keras.layers.Input(shape=[1])
 
       with ipu.keras.PipelineStage(0):
-        x = keras.layers.Lambda(lambda x: math_ops.cast(x, dtype=np.float16))(
-            inputs)
+        x = keras.layers.Lambda(lambda x: tf.cast(x, dtype=np.float16))(inputs)
         x = keras.layers.Dense(10, dtype=np.float16,
                                kernel_initializer='ones')(x)
 
@@ -647,7 +644,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(output.shape, (16, 1))
       self.assertAllClose(output.flatten(), [n * 10 for n in range(16)])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithReusedLayer(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -678,7 +675,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       # Ensure fit runs through successfully.
       m.fit(test_language_dataset(), steps_per_epoch=6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithStagesDefinedForLayerAndNodes(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -707,7 +704,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       # Ensure fit runs through successfully.
       m.fit(test_language_dataset(), steps_per_epoch=6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitFailsWithSameLayerOnDifferentDevices(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -737,7 +734,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
           "an input can only be used by pipeline stages on the same IPU"):
         m.fit(test_language_dataset(), steps_per_epoch=4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithStagesDefinedOnlyForLayers(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -774,7 +771,7 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
       # Ensure fit runs through successfully.
       m.fit(test_language_dataset(), steps_per_epoch=4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPipelineTrainArgument(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -863,10 +860,10 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
     # Note that the crux of the problem here is that the moving statistics need
     # to be updated per-batch, but the pipeline only allows updates after it
     # flushes, so the behaviour is undefined.
-    ds = dataset_ops.Dataset.range(bs * grad_acc * num_updates)
+    ds = tf.data.Dataset.range(bs * grad_acc * num_updates)
     ds = ds.batch(bs, drop_remainder=True)
-    ds = ds.map(lambda x: (math_ops.cast(x, dtypes.float32),
-                           math_ops.cast(x, dtypes.float32)))
+    ds = ds.map(lambda x:
+                (tf.cast(x, dtypes.float32), tf.cast(x, dtypes.float32)))
 
     # Calculate what the moving statistics should be.
     # According to
@@ -920,4 +917,4 @@ class IPUPipelineTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

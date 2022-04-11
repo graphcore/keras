@@ -25,7 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
+
 from tensorflow.python.training import gradient_descent
 from keras.engine import base_layer_utils
 
@@ -39,7 +39,7 @@ def test_dataset(length=None,
   constant_d = constant_op.constant(x_val, shape=[32], dtype=dtype)
   constant_l = constant_op.constant(y_val, shape=[2], dtype=dtype)
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -51,7 +51,7 @@ def test_language_dataset(length=None, batch_size=1):
   constant_d = constant_op.constant(1, shape=[32], dtype=np.int32)
   constant_l = constant_op.constant(2, shape=[32], dtype=np.int32)
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -65,7 +65,7 @@ def test_inference_dataset(length=None,
 
   constant_d = constant_op.constant(x_val, shape=[32], dtype=dtype)
 
-  ds = dataset_ops.Dataset.from_tensors(constant_d)
+  ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -90,18 +90,18 @@ def fixed_weight_model():
   ]
 
 
-class IPUModelTest(test.TestCase):
-  @test_util.run_v2_only
+class IPUModelTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testEmptyModelCreation(self):
     s = keras.Sequential([])
     self.assertEqual(s.layers, [])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelCreation(self):
     m = keras.Sequential(simple_model())
     self.assertEqual(len(m.layers), 2)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelBadLayers(self):
     with self.assertRaisesRegex(TypeError,
                                 "The added layer must be an instance"):
@@ -110,7 +110,7 @@ class IPUModelTest(test.TestCase):
           keras.layers.Dense(8),
       ]])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMustCallCompileFit(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -120,7 +120,7 @@ class IPUModelTest(test.TestCase):
           RuntimeError, "You must compile your model before training/testing"):
         m.fit(test_dataset(length=64))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMustCallCompileEvaluate(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -130,7 +130,7 @@ class IPUModelTest(test.TestCase):
           RuntimeError, "You must compile your model before training/testing"):
         m.evaluate(test_dataset(length=64))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testUnlimitedDatasetHasNoStepsPerEpoch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -141,7 +141,7 @@ class IPUModelTest(test.TestCase):
                                   "When providing an infinite dataset"):
         m.fit(test_dataset(), epochs=4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testBuildSequentialModel(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -157,7 +157,7 @@ class IPUModelTest(test.TestCase):
       for l in m.layers:
         self.assertAllEqual(l.built, True)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testResultsOneEpochWithTfOptimizerNoAccumulation_CpuMatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -189,7 +189,7 @@ class IPUModelTest(test.TestCase):
 
     self.assertAllClose(history.history, cpu_history.history)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryWithKerasOptimizer(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -213,7 +213,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(len(history.history['loss']), 1)
       self.assertEqual(type(history.history['loss'][0]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryTwoEpochs(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -238,7 +238,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(type(history.history['loss'][0]), float)
       self.assertEqual(type(history.history['loss'][1]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryStepsPerEpochOneEpoch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -262,7 +262,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(len(history.history['loss']), 1)
       self.assertEqual(type(history.history['loss'][0]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitTwice(self):
     cfg = IPUConfig()
     report_helper = tu.ReportHelper()
@@ -321,7 +321,7 @@ class IPUModelTest(test.TestCase):
       # Don't need to compile the graph again.
       self.assert_num_reports(report_helper, 0)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryStepsPerEpochTwoEpochs(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -346,7 +346,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(type(history.history['loss'][0]), float)
       self.assertEqual(type(history.history['loss'][1]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithLearningRateDecay(self):
     report_json = tu.ReportJSON(self, eager_mode=True)
     strategy = ipu.ipu_strategy.IPUStrategyV1()
@@ -373,7 +373,7 @@ class IPUModelTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithExponentialDecayLearningRateSchedule(self):
     report_json = tu.ReportJSON(self, eager_mode=True)
     strategy = ipu.ipu_strategy.IPUStrategyV1()
@@ -401,7 +401,7 @@ class IPUModelTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithPiecewiseConstantDecayLearningRateSchedule(self):
     report_json = tu.ReportJSON(self, eager_mode=True)
     strategy = ipu.ipu_strategy.IPUStrategyV1()
@@ -429,7 +429,7 @@ class IPUModelTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithMetrics(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -458,7 +458,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(type(history.history['accuracy'][0]), float)
       self.assertEqual(type(history.history['accuracy'][1]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEval_CpuMatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -480,7 +480,7 @@ class IPUModelTest(test.TestCase):
 
     self.assertAllClose(result, cpu_result)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictBs1_CpuMatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -503,7 +503,7 @@ class IPUModelTest(test.TestCase):
 
     self.assertAllClose(ipu_out, cpu_out)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictBs2_CpuMatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -526,7 +526,7 @@ class IPUModelTest(test.TestCase):
 
     self.assertAllClose(ipu_out, cpu_out)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithTensorDataPartialBatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -549,7 +549,7 @@ class IPUModelTest(test.TestCase):
           ValueError, "The provided set of data has a partial batch"):
         m.fit(input_x, input_y)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithTensorData(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -577,7 +577,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(len(history.history['loss']), 1)
       self.assertEqual(type(history.history['loss'][0]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithNumpyData(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -605,7 +605,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(len(history.history['loss']), 1)
       self.assertEqual(type(history.history['loss'][0]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEvalWithNumpyData(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -627,7 +627,7 @@ class IPUModelTest(test.TestCase):
       result = m.evaluate(input_x, input_y, batch_size=1)
       self.assertAllClose(result, 1.1664)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEvalWithNumpyDataBs2(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -649,7 +649,7 @@ class IPUModelTest(test.TestCase):
       result = m.evaluate(input_x, input_y, batch_size=2)
       self.assertAllClose(result, 1.1664)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs1(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -673,7 +673,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(type(result), np.ndarray)
       self.assertEqual(result.shape, (96, 2))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -697,7 +697,7 @@ class IPUModelTest(test.TestCase):
       self.assertEqual(type(result), np.ndarray)
       self.assertEqual(result.shape, (96, 2))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testAutocast_V2DtypeBehaviourTrue(self):
     base_layer_utils.enable_v2_dtype_behavior()
 
@@ -723,7 +723,7 @@ class IPUModelTest(test.TestCase):
 
       # No exceptions thrown
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testAutocast_V2DtypeBehaviourFalse(self):
     base_layer_utils.disable_v2_dtype_behavior()
 
@@ -754,4 +754,4 @@ class IPUModelTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

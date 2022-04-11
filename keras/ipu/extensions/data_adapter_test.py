@@ -17,19 +17,19 @@
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.ops import variables
-from tensorflow.python.data.experimental.ops import cardinality
-from tensorflow.python.data.ops import dataset_ops
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
+
 from keras import keras_parameterized
 from keras.ipu.extensions import data_adapter
 
 
 class DataHandlerTest(keras_parameterized.TestCase):
   def test_finite_dataset_with_steps_per_epoch(self):
-    data = dataset_ops.Dataset.from_tensor_slices([0, 1, 2, 3]).batch(
-        1, drop_remainder=True)
+    data = tf.data.Dataset.from_tensor_slices([0, 1, 2,
+                                               3]).batch(1,
+                                                         drop_remainder=True)
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.IPUDataHandler(data,
                                                initial_epoch=0,
@@ -46,8 +46,9 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[0, 1], [2, 3]])
 
   def test_finite_dataset_without_steps_per_epoch(self):
-    data = dataset_ops.Dataset.from_tensor_slices([0, 1, 2]).batch(
-        1, drop_remainder=True)
+    data = tf.data.Dataset.from_tensor_slices([0, 1,
+                                               2]).batch(1,
+                                                         drop_remainder=True)
     data_handler = data_adapter.IPUDataHandler(data, initial_epoch=0, epochs=2)
     self.assertEqual(data_handler.inferred_steps, 3)
     returned_data = []
@@ -59,8 +60,9 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[0, 1, 2], [0, 1, 2]])
 
   def test_finite_dataset_with_steps_per_epoch_exact_size(self):
-    data = dataset_ops.Dataset.from_tensor_slices([0, 1, 2, 3]).batch(
-        1, drop_remainder=True)
+    data = tf.data.Dataset.from_tensor_slices([0, 1, 2,
+                                               3]).batch(1,
+                                                         drop_remainder=True)
     # If user specifies exact size of `Dataset` as `steps_per_epoch`,
     # create a new iterator each epoch.
     data_handler = data_adapter.IPUDataHandler(data,
@@ -77,7 +79,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[0, 1, 2, 3], [0, 1, 2, 3]])
 
   def test_infinite_dataset_with_steps_per_epoch(self):
-    data = dataset_ops.Dataset.from_tensor_slices([0, 1, 2]).batch(
+    data = tf.data.Dataset.from_tensor_slices([0, 1, 2]).batch(
         1, drop_remainder=True).repeat()
     data_handler = data_adapter.IPUDataHandler(data,
                                                initial_epoch=0,
@@ -92,10 +94,11 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[0, 1, 2], [0, 1, 2]])
 
   def test_unknown_cardinality_dataset_with_steps_per_epoch(self):
-    ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
+    ds = tf.data.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
     filtered_ds = ds.filter(lambda x: x < 4)
     self.assertEqual(
-        cardinality.cardinality(filtered_ds).numpy(), cardinality.UNKNOWN)
+        tf.data.experimental.cardinality(filtered_ds).numpy(),
+        tf.data.experimental.UNKNOWN)
 
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.IPUDataHandler(filtered_ds,
@@ -114,10 +117,11 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(data_handler.inferred_steps, 2)
 
   def test_unknown_cardinality_dataset_without_steps_per_epoch(self):
-    ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
+    ds = tf.data.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
     filtered_ds = ds.filter(lambda x: x < 4)
     self.assertEqual(
-        cardinality.cardinality(filtered_ds).numpy(), cardinality.UNKNOWN)
+        tf.data.experimental.cardinality(filtered_ds).numpy(),
+        tf.data.experimental.UNKNOWN)
 
     with self.assertRaisesRegex(ValueError, "Could not infer the size of"):
       data_handler = data_adapter.IPUDataHandler(filtered_ds,
@@ -126,7 +130,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
       data_handler.inferred_steps  # pylint: disable=pointless-statement
 
   def test_insufficient_data(self):
-    ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1])
+    ds = tf.data.DatasetV2.from_tensor_slices([0, 1])
     ds = ds.filter(lambda *args, **kwargs: True)
     data_handler = data_adapter.IPUDataHandler(ds,
                                                initial_epoch=0,
@@ -237,8 +241,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     if use_numpy:
       batch_size = 2
     else:
-      x = dataset_ops.Dataset.from_tensor_slices(x).batch(2,
-                                                          drop_remainder=True)
+      x = tf.data.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
       batch_size = None
 
     data_handler = data_adapter.IPUDataHandler(x, batch_size=batch_size)
@@ -251,7 +254,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
   def test_size(self):
     x = np.ones((10, 1))
-    x = dataset_ops.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
+    x = tf.data.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
     with self.assertRaisesRegex(
         ValueError,
         r"Your input does not have enough data. Make sure that your dataset or "
@@ -264,7 +267,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
   def test_dataset_not_big_enough_with_replication(self):
     x = np.ones((6, 1))
-    x = dataset_ops.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
+    x = tf.data.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
     with self.assertRaisesRegex(
         ValueError,
         r"The provided dataset contains 3 items, but all 4 replicas are "
@@ -278,18 +281,18 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
   def test_steps_per_execution_not_divisor(self):
     x = np.ones((8, 1))
-    x = dataset_ops.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
+    x = tf.data.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
     with self.assertRaisesRegex(
         ValueError,
         r"`steps_per_execution` must be a divisor of the number of batches in "
         r"the dataset provided."):
       data_handler = data_adapter.IPUDataHandler(
-          x, epochs=1, batch_size=2, steps_per_execution=variables.Variable(3))
+          x, epochs=1, batch_size=2, steps_per_execution=tf.Variable(3))
       del data_handler
 
   def test_deferred_setting_of_replication_factor(self):
     x = np.ones((8, 1))
-    x = dataset_ops.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
+    x = tf.data.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
     # With a batch size of 2, the steps_per_execution value of 3 is not valid
     # until we set a replication_factor which is a muliple of 3.
     data_handler = data_adapter.IPUDataHandler(
@@ -302,7 +305,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
   def test_dataset_drop_batch_with_replication(self):
     x = np.ones((6, 1))
-    x = dataset_ops.Dataset.from_tensor_slices(x).repeat()
+    x = tf.data.Dataset.from_tensor_slices(x).repeat()
     data_handler = data_adapter.IPUDataHandler(x,
                                                steps_per_epoch=7,
                                                replication_factor=4)
@@ -312,4 +315,4 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
-  test.main()
+  tf.test.main()

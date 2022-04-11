@@ -16,15 +16,11 @@
 
 import numpy as np
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python import ipu
-from tensorflow.python.ipu import config
-from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu.keras import extensions
-from tensorflow.python.eager import def_function
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
+from tensorflow.python.eager.def_function import function as tf_function
+
 from keras.datasets import imdb
 from keras.engine import base_layer
 from keras.engine import functional
@@ -34,23 +30,25 @@ from keras import layers
 from keras import Model
 from keras import optimizer_v2
 from keras import preprocessing
+from keras.ipu import extensions
+from keras import testing_utils
 
 
 def get_imdb_dataset(num_words, maxlen):
   (x_train, y_train), (_, _) = imdb.load_data(num_words=num_words)
   x_train = preprocessing.sequence.pad_sequences(x_train, maxlen=maxlen)
 
-  ds = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
+  ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
   ds = ds.repeat()
-  ds = ds.map(lambda x, y: (x, math_ops.cast(y, np.int32)))
+  ds = ds.map(lambda x, y: (x, tf.cast(y, np.int32)))
   ds = ds.batch(32, drop_remainder=True)
   return ds
 
 
-class KerasExtensionsTest(test.TestCase):
-  @test_util.run_v2_only
+class KerasExtensionsTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testExtension(self):
-    cfg = config.IPUConfig()
+    cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.configure_ipu_system()
 
@@ -59,19 +57,20 @@ class KerasExtensionsTest(test.TestCase):
       def call(self, x, training=False):  # pylint: disable=unused-argument,arguments-differ
         return x + 1.
 
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
 
-    @def_function.function(jit_compile=True)
+    @tf_function(jit_compile=True)
     def fn(layer):
       return layer(10.)
 
     def inner_test(expected_value, extension):
-      strategy._register_keras_extension(TestLayer, extension)  # pylint: disable=protected-access
+      strategy._register_keras_extension(  # pylint: disable=protected-access
+          TestLayer, base_layer.KerasExtension, extension)
       with strategy.scope():
         l = TestLayer()
         result = strategy.run(fn, args=[l])
         self.assertAllClose(result, expected_value)
-      strategy._delete_keras_extension(TestLayer)  # pylint: disable=protected-access
+      strategy._delete_keras_extension(TestLayer, base_layer.KerasExtension)  # pylint: disable=protected-access
 
     # Test replacement.
     class TestExtension1(base_layer.KerasExtension):
@@ -120,7 +119,7 @@ class KerasExtensionsTest(test.TestCase):
 
     inner_test(110., TestExtension5)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testExtensionWithClassMethod(self):
     # Ensure we can provide a delegate for a class method
 
@@ -156,8 +155,9 @@ class KerasExtensionsTest(test.TestCase):
       TestLayer2.method_was_called_times = 0
       TestExtension.method_was_called_times = 0
 
-    strategy = ipu_strategy.IPUStrategyV1()
-    strategy._register_keras_extension(TestLayer, TestExtension)  # pylint: disable=protected-access
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
+    strategy._register_keras_extension(  # pylint: disable=protected-access
+        TestLayer, base_layer.KerasExtension, TestExtension)
     with strategy.scope():
       reset_spies()
       output = TestLayer.my_classmethod(2)
@@ -189,13 +189,13 @@ class KerasExtensionsTest(test.TestCase):
     self.assertEqual(TestExtension.method_was_called_times, 0)
     self.assertEqual(output, 246)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testKerasModelExtensions(self):
-    cfg = config.IPUConfig()
+    cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.configure_ipu_system()
 
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       # Check sequential inheritance.
       model = sequential.Sequential()
@@ -233,13 +233,13 @@ class KerasExtensionsTest(test.TestCase):
       self.assertIsInstance(
           model, extensions.functional_extensions.FunctionalExtension)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelOverrides(self):
-    cfg = config.IPUConfig()
+    cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.configure_ipu_system()
 
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
 
       class MakeFunctionsOverrideModel(functional.Functional):
@@ -318,13 +318,13 @@ class KerasExtensionsTest(test.TestCase):
       with self.assertRaisesRegex(RuntimeError, "The function `call`"):
         model.predict([1.], batch_size=1)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSequential(self):
-    cfg = config.IPUConfig()
+    cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.configure_ipu_system()
 
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
 
       class MakeFunctionsOverrideModel(sequential.Sequential):
@@ -391,13 +391,13 @@ class KerasExtensionsTest(test.TestCase):
       with self.assertRaisesRegex(RuntimeError, "The function `call`"):
         model.predict([1.], batch_size=1)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModel(self):
-    cfg = config.IPUConfig()
+    cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.configure_ipu_system()
 
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
 
       class MakeFunctionsOverrideModel(training_module.Model):  # pylint: disable=abstract-method
@@ -444,7 +444,7 @@ class KerasExtensionsTest(test.TestCase):
       with self.assertRaisesRegex(RuntimeError, "The function `call`"):
         model.predict([[1.]], batch_size=1)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testInputValidation(self):
     class TwoInTwoOutIdentity(layers.Layer):
       def __init__(self, **layer_args):
@@ -453,7 +453,7 @@ class KerasExtensionsTest(test.TestCase):
       def call(self, x, y):  # pylint: disable=arguments-differ
         return x, y
 
-    cfg = config.IPUConfig()
+    cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 2
     cfg.configure_ipu_system()
 
@@ -489,4 +489,4 @@ class KerasExtensionsTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

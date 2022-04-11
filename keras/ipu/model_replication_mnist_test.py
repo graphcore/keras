@@ -28,7 +28,7 @@ from keras.datasets import mnist
 
 class IPUModelReplicatedMnistTest(test_util.TensorFlowTestCase):
   @tu.test_uses_ipus(num_ipus=4)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testCompareMnistPredictionsWithCpu(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 4

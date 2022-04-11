@@ -25,7 +25,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
 
 
 def test_dataset(length=None, batch_size=1):
@@ -33,7 +32,7 @@ def test_dataset(length=None, batch_size=1):
   constant_d = constant_op.constant(1.0, shape=[32])
   constant_l = constant_op.constant(0.2, shape=[2])
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -56,8 +55,8 @@ def fixed_weight_pipeline():
   return m
 
 
-class IPUSequentialPipelineTest(test.TestCase):
-  @test_util.run_v2_only
+class IPUSequentialPipelineTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testCanSaveWeights(self):
 
     dataset = test_dataset(length=72)
@@ -112,7 +111,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       for w1, w2 in zip(m.weights, weights):
         self.assertTrue(np.any(w1.numpy() != np.array(w2)))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testCanDoTrainingCheckpoint(self):
 
     dataset = test_dataset(length=72)
@@ -158,7 +157,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       h = m.fit(dataset, verbose=0, epochs=1)
       self.assertNotEqual(h.history['loss'][0], loss)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testInvalidRestorePath(self):
 
     cfg = IPUConfig()
@@ -177,4 +176,4 @@ class IPUSequentialPipelineTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

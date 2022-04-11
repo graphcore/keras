@@ -24,7 +24,7 @@ from tensorflow.python.ipu import ipu_strategy
 
 class IPUModelReplicatedTest(test_util.TensorFlowTestCase):
   @tu.test_uses_ipus(num_ipus=2)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2Replicas2(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 2
@@ -57,7 +57,7 @@ class IPUModelReplicatedTest(test_util.TensorFlowTestCase):
         self.assertEqual(0, np.sum(r != result[i - 1]))
 
   @tu.test_uses_ipus(num_ipus=2)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2Replicas2Ga3DropsSamples(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 2
@@ -84,7 +84,7 @@ class IPUModelReplicatedTest(test_util.TensorFlowTestCase):
       self.assertEqual(result.shape[0], 60)
 
   @tu.test_uses_ipus(num_ipus=2)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2Replicas2Steps2Ga1(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 2
@@ -119,7 +119,7 @@ class IPUModelReplicatedTest(test_util.TensorFlowTestCase):
         self.assertEqual(0, np.sum(r != result[i - 1]))
 
   @tu.test_uses_ipus(num_ipus=2)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictMultipleOutputReplicas2(self):
     def predict_input_fn():
       x1 = np.ones((64, 32), dtype=np.float32)
@@ -182,7 +182,7 @@ class IPUModelReplicatedTest(test_util.TensorFlowTestCase):
         np.testing.assert_almost_equal(cpu_predict, ipu_predict)
 
   @tu.test_uses_ipus(num_ipus=2)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictMultipleOutputDifferentShapesReplicas2(self):
     def predict_input_fn():
       x1 = np.ones((64, 32), dtype=np.float32)

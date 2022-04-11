@@ -22,9 +22,9 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager.def_function import function as tf_function
 from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import test
+
 from tensorflow.python import ipu
 from keras import keras_parameterized
 from keras import testing_utils
@@ -123,7 +123,7 @@ class TestSequential(keras_parameterized.TestCase):
 
     x = array_ops.ones((num_samples, input_dim))
     y = array_ops.zeros((num_samples, num_classes))
-    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = tf.data.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10, drop_remainder=True)
 
@@ -361,7 +361,7 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     class MySequential(keras.Sequential):
       def __init__(self, name=None):
         super().__init__(name=name)
-        self.call = def_function.function(self.call)
+        self.call = tf_function(self.call)
 
     model = MySequential()
     model.add(keras.layers.Dense(4, activation='relu'))
@@ -415,4 +415,4 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

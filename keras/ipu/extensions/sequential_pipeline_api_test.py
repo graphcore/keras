@@ -16,14 +16,16 @@
 import tempfile
 import os
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu import config
 from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu.keras import extensions
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
+
+from keras.ipu import extensions
 from keras.engine import sequential
 from keras import layers
 from keras import models
+from keras import testing_utils
 
 
 def get_simple_model():
@@ -50,8 +52,8 @@ def create_default_assignment(model):
   ]
 
 
-class SequentialPipelineApiTest(test.TestCase):
-  @test_util.run_v2_only
+class SequentialPipelineApiTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testGetSetReset(self):
     cfg = config.IPUConfig()
     cfg.auto_select_ipus = 1
@@ -159,7 +161,7 @@ class SequentialPipelineApiTest(test.TestCase):
           r"stage."):
         m.set_pipeline_stage_assignment(assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSaveRestore(self):
     cfg = config.IPUConfig()
 
@@ -183,7 +185,7 @@ class SequentialPipelineApiTest(test.TestCase):
             [assignment.pipeline_stage for assignment in assignments],
             list(range(10)))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipeliningOptions(self):
     cfg = config.IPUConfig()
 
@@ -283,4 +285,4 @@ class SequentialPipelineApiTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

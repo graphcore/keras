@@ -24,8 +24,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
+
 from tensorflow.python import ipu
 from keras import keras_parameterized
 from keras import testing_utils
@@ -166,7 +165,7 @@ class TestDeferredSequential(keras_parameterized.TestCase):
   def test_loss_layer(self):
     class LossLayer(keras.layers.Layer):
       def call(self, inputs):  # pylint: disable=arguments-differ
-        self.add_loss(math_ops.reduce_sum(inputs))
+        self.add_loss(tf.reduce_sum(inputs))
         return inputs
 
     # Test loss layer alone
@@ -211,4 +210,4 @@ def get_model():
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()
-  test.main()
+  tf.test.main()

@@ -24,8 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
+
 from tensorflow.python import ipu
 from keras import backend
 from keras import initializers
@@ -62,7 +61,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   def test_activity_regularization_with_model_composition(self):
     def reg(x):
-      return math_ops.reduce_sum(x)
+      return tf.reduce_sum(x)
 
     net_a_input = input_layer_lib.Input((2,))
     net_a = net_a_input
@@ -243,7 +242,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
   def test_call_kwarg_dtype_serialization(self):
     class Double(layers.Layer):
       def call(self, x1, dtype=None):  # pylint: disable=arguments-differ
-        return math_ops.cast(x1 + x1, dtype=dtype)
+        return tf.cast(x1 + x1, dtype=dtype)
 
     input1 = input_layer_lib.Input(10)
     outputs = Double()(input1, dtype=dtypes.float16)
@@ -688,7 +687,7 @@ class AddLossTest(keras_parameterized.TestCase):
     mid = layers.Dense(10)(inputs)
     outputs = layers.Dense(1)(mid)
     model = training_lib.Model(inputs, outputs)
-    model.add_loss(math_ops.reduce_mean(outputs))
+    model.add_loss(tf.reduce_mean(outputs))
     self.assertLen(model.losses, 1)
 
     initial_weights = model.get_weights()
@@ -712,8 +711,8 @@ class AddLossTest(keras_parameterized.TestCase):
     x2 = layers.Dense(10)(x1)
     outputs = layers.Dense(1)(x2)
     model = training_lib.Model(inputs, outputs)
-    model.add_loss(math_ops.reduce_sum(x1 * x2))
-    model.add_loss(math_ops.reduce_mean(outputs))
+    model.add_loss(tf.reduce_sum(x1 * x2))
+    model.add_loss(tf.reduce_mean(outputs))
     self.assertLen(model.losses, 2)
 
     initial_weights = model.get_weights()
@@ -762,4 +761,4 @@ class AddLossTest(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

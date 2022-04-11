@@ -16,15 +16,16 @@
 import tempfile
 import os
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu import config
 from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu.keras import extensions
-from tensorflow.python.framework import test_util
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
+
+from keras.ipu import extensions
 from keras.engine import training as training_module
 from keras import layers
 from keras import models
+from keras import testing_utils
 
 
 def get_simple_model():
@@ -49,8 +50,8 @@ def check_assignments(instance, assignments):
           for assignment in assignments))
 
 
-class FunctionalPipelineApiTest(test.TestCase):
-  @test_util.run_v2_only
+class FunctionalPipelineApiTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testGetSetReset(self):
     cfg = config.IPUConfig()
     cfg.auto_select_ipus = 1
@@ -210,7 +211,7 @@ class FunctionalPipelineApiTest(test.TestCase):
           r"stage. However, dense.* has not been assigned to one."):
         m = training_module.Model(d, x)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSaveRestore(self):
     cfg = config.IPUConfig()
 
@@ -275,7 +276,7 @@ class FunctionalPipelineApiTest(test.TestCase):
         assignments = m.get_pipeline_stage_assignment()
         check_assignments_are(m, assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipeliningOptions(self):
     cfg = config.IPUConfig()
 
@@ -348,7 +349,7 @@ class FunctionalPipelineApiTest(test.TestCase):
       f2 = layers.Flatten()(d2)
       c1 = layers.Concatenate()([f1, f2])
       x1 = layers.Dense(4)(c1)
-      y1 = math_ops.multiply(1.0, x1)
+      y1 = tf.multiply(1.0, x1)
       m = training_module.Model((d1, d2), y1)
 
       strings = []
@@ -400,4 +401,4 @@ class FunctionalPipelineApiTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

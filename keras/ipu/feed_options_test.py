@@ -20,7 +20,6 @@ from tensorflow.python import ipu
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
 from keras.datasets import mnist
 
 
@@ -32,7 +31,7 @@ def get_mnist_dataset(batch_size):
   x_test = x_test[..., np.newaxis]
   x_test = x_test.astype('float32')
 
-  predict_ds = dataset_ops.DatasetV2.from_tensor_slices(x_test).batch(
+  predict_ds = tf.data.DatasetV2.from_tensor_slices(x_test).batch(
       batch_size, drop_remainder=True).repeat()
 
   return predict_ds
@@ -58,7 +57,7 @@ def simple_functional_model():
   return keras.Model(d, x)
 
 
-class KerasFeedOptionsTest(test.TestCase, parameterized.TestCase):
+class KerasFeedOptionsTest(tf.test.TestCase, parameterized.TestCase):
   TESTCASES = [{
       "testcase_name": "sequential",
       "model_fn": simple_sequential_model,
@@ -68,7 +67,7 @@ class KerasFeedOptionsTest(test.TestCase, parameterized.TestCase):
   }]
 
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testOptions(self, model_fn):
     cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
@@ -99,4 +98,4 @@ class KerasFeedOptionsTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

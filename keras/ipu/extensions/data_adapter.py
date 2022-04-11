@@ -17,15 +17,13 @@ import math
 from typing import Generator, Iterator
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import cardinality
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_spec
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import nest
 from tensorflow.python.ops import variables
+
 from keras.engine import base_layer_utils
 from keras.engine import data_adapter
 
@@ -182,7 +180,7 @@ class IPUDataHandler(data_adapter.DataHandler):
           "Could not infer the size of the data. You must specify the number "
           "of steps to run.")
     if steps % self._replication_factor:
-      size = cardinality.cardinality(dataset)
+      size = tf.data.experimental.cardinality(dataset)
       if size >= 0:
         logging.warn(
             "Dataset of length {} is being evenly distributed between {} "
@@ -222,12 +220,12 @@ class IPUDataHandler(data_adapter.DataHandler):
   def _validate_dataset(self, dataset):
     self._check_replication_factor_set("_validate_dataset")
     # Validate the size of the dataset.
-    dataset_size = cardinality.cardinality(dataset)
-    if dataset_size == cardinality.UNKNOWN:
+    dataset_size = tf.data.experimental.cardinality(dataset)
+    if dataset_size == tf.data.experimental.UNKNOWN_CARDINALITY:
       logging.info(
           "The provided set of data has an unknown size. This can result in "
           "runtime errors if not enough data is provided during execution.")
-    elif dataset_size == cardinality.INFINITE:
+    elif dataset_size == tf.data.experimental.INFINITE_CARDINALITY:
       pass
     else:
       # If the size is known, it must provide enough data.
@@ -246,7 +244,7 @@ class IPUDataHandler(data_adapter.DataHandler):
                 total_steps, dataset_size))
 
     # Validate that the dataset has a shape which can be handled by infeeds.
-    for spec in nest.flatten(dataset.element_spec):
+    for spec in tf.nest.flatten(dataset.element_spec):
       if not spec.shape.is_fully_defined():
         raise ValueError(
             "The provided set of data contains a shape {} which is not fully "
@@ -266,7 +264,7 @@ class IPUDataHandler(data_adapter.DataHandler):
   def batch_size(self):
     batch_size = self._adapter.batch_size()
     if batch_size is None and self.element_spec:
-      element_spec = nest.flatten(self.element_spec)[0]
+      element_spec = tf.nest.flatten(self.element_spec)[0]
       if element_spec.shape:
         batch_size = element_spec.shape[0]
     return batch_size
@@ -312,19 +310,19 @@ def _autocast_dataset(dataset):
   """Automatically downcast fp64 to fp32 when `v2_dtype_behavior_enabled()`."""
   element_spec = dataset.element_spec
   if (not base_layer_utils.v2_dtype_behavior_enabled()
-      or not any(spec.dtype == dtypes.float64
-                 for spec in nest.flatten(dataset.element_spec))):
+      or not any(spec.dtype == tf.float64
+                 for spec in tf.nest.flatten(dataset.element_spec))):
     return dataset
 
-  strip_tuple = isinstance(element_spec, tensor_spec.TensorSpec)
+  strip_tuple = isinstance(element_spec, tf.TensorSpec)
 
   def autocast_structure(*structure):
     def autocast_tensor(tensor):
-      if tensor.dtype == dtypes.float64:
-        return math_ops.cast(tensor, dtypes.float32)
+      if tensor.dtype == tf.float64:
+        return tf.cast(tensor, tf.float32)
       return tensor
 
-    mapped = nest.map_structure(autocast_tensor, structure)
+    mapped = tf.nest.map_structure(autocast_tensor, structure)
     return mapped[0] if strip_tuple else mapped
 
   return dataset.map(autocast_structure)

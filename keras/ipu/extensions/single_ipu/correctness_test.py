@@ -22,7 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.platform import test
+
 from tensorflow.python import ipu
 from keras import keras_parameterized
 from keras import testing_utils
@@ -170,4 +170,4 @@ class MultipleInputTest(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

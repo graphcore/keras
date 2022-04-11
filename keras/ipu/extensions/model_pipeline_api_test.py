@@ -18,17 +18,18 @@ import os
 import numpy as np
 from absl.testing import parameterized
 
-from tensorflow.python.framework import test_util
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu import ipu_strategy
 from tensorflow.python.ipu.config import IPUConfig
-from tensorflow.python.ipu.keras import extensions
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
+
+from keras.ipu import extensions
 from keras import layers
 from keras import losses
 from keras import models
 from keras.optimizer_v2 import rmsprop
 from keras.engine import training as training_module
+from keras import testing_utils
 
 
 # Basic subclassed model.
@@ -141,8 +142,8 @@ def check_assignments(instance, assignments):
           for assignment in assignments))
 
 
-class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
-  @test_util.run_v2_only
+class ModelPipelineApiTest(tf.test.TestCase, parameterized.TestCase):
+  @testing_utils.run_v2_only
   def testGetPipelistStageAssignmentOnUninitializedModel(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -158,7 +159,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           r"not been built yet"):
         m.get_pipeline_stage_assignment()
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testGetPipelineStageAssignmentDefault(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -178,7 +179,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(
           all(assignment.pipeline_stage is None for assignment in assignments))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipelineStageAssignment(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -205,7 +206,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(assignment.pipeline_stage, nodes_to_stage[str(
             id(assignment.layer._inbound_nodes[assignment.node_index]))])  # pylint: disable=protected-access
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testResetPipelineStageAssignment(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -233,7 +234,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(
           all(assignment.pipeline_stage is None for assignment in assignments))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithInvalidNumberOfAssignments(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -253,7 +254,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           r"not match the number of layers in the graph \(6\)."):
         m.set_pipeline_stage_assignment(assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithInvalidAssignmentClass(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -273,7 +274,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           "`ModelLayerPipelineStageAssignment`."):
         m.set_pipeline_stage_assignment(assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithMissingAssignment(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -294,7 +295,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           r"stage in `pipeline_stage_assignment`."):
         m.set_pipeline_stage_assignment(assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithAssignmentForNonExistantNode(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -318,7 +319,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           "post-order generated from the graph"):
         m.set_pipeline_stage_assignment(assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithEmptyStages(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -341,7 +342,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           r"preceeding stages \[1, 3, 5, 7, 9\] had no assignments."):
         m.set_pipeline_stage_assignment(assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithDependencyOnLaterStage(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -363,7 +364,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           r"stage"):
         m.set_pipeline_stage_assignment(assignments)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPipelineStageAssignmentWithScopes(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -406,7 +407,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
             self.assertEqual(assignment.node_index, 1)
             self.assertEqual(assignment.pipeline_stage, 5)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testRunModelWithPartialPipelineStageAssignments(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -435,7 +436,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
         # Explicit call to build should also fail.
         m.build((6, 32))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSaveRestore(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -526,7 +527,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
         m.predict(inputs, batch_size=1)
 
   @parameterized.parameters(([True, False],), (["key1", "key2"],))
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelWithDictInputs(self, keys):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -549,7 +550,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
       m.fit(inputs, labels, batch_size=1)
       m.evaluate(inputs, labels, batch_size=1)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipeliningOptionsWithNegativeSteps(self):
     cfg = IPUConfig()
 
@@ -566,7 +567,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           "integer, but got -1 instead"):
         m.set_pipelining_options(gradient_accumulation_steps_per_replica=-1)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipeliningOptionsWithNonIntegerTypeDeviceMapping(self):
     cfg = IPUConfig()
 
@@ -581,7 +582,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           ValueError, "Expected `device_mapping` to be a list of integers"):
         m.set_pipelining_options(device_mapping=[0.0] * 10)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSetPipeliningOptionsWithInvalidKeys(self):
     cfg = IPUConfig()
 
@@ -611,7 +612,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           "This argument is not compatible with Keras"):
         m.set_pipelining_options(batch_serialization_iterations=10)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSaveAndRestorePipeliningOptions(self):
     cfg = IPUConfig()
 
@@ -667,7 +668,7 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
           f2 = self.flatten_layer(d2)
           c1 = self.concat_layer([f1, f2])
           x1 = self.dense_layer(c1)
-          return math_ops.multiply(1.0, x1)
+          return tf.multiply(1.0, x1)
 
       m = SimplePrintableModel()
       m.build([(1, 1), (1, 1)])
@@ -717,4 +718,4 @@ class ModelPipelineApiTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

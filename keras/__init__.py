@@ -28,6 +28,10 @@ from keras.engine.input_layer import Input
 from keras.engine.sequential import Sequential
 from keras.engine.training import Model
 
+# Begin IPU specific changes.
+from keras.ipu.extensions import register_extensions
+# End IPU specific changes.
+
 from tensorflow.python.util.tf_export import keras_export
 
 __version__ = '2.6.0'

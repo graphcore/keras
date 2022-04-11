@@ -20,60 +20,42 @@ import copy
 import enum
 import math
 import sys
-from collections import OrderedDict
+import collections
 from functools import partial
 import six
 import libpvti
 import popdist
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager.def_function import function as tf_function
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.ipu import ipu_infeed_queue
-from tensorflow.python.ipu import utils
+from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu.ops import pipelining_ops
-from tensorflow.python.ipu.keras import optimizers as ipu_optimizers
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
+
+from keras import callbacks as callbacks_module
 from keras.ipu.extensions import data_adapter as ipu_data_adapter
 from keras.ipu.extensions import polling_thread
 from keras.ipu.extensions import extensions_util
 from keras.ipu.extensions import data_feed_manager
-from keras import callbacks as callbacks_module
 from keras.engine import base_layer_utils
 from keras.engine import base_layer
 from keras.engine import input_spec
 from keras.engine import training as training_module
 from keras.engine import training_utils
+from keras.engine import data_adapter
 from keras.layers import BatchNormalization
 from keras.utils import tf_inspect
 from keras.utils import tf_utils
 from keras.utils import version_utils
-from keras.engine import data_adapter
+from keras.saving.saved_model import utils
 
 logged_steps_per_execution_warning = False
 _pvti_trace_channel = libpvti.createTraceChannel("Keras")
-
-
-class _NormalizedKerasOptimizerWrapper(  # pylint: disable=abstract-method
-    ipu_optimizers._KerasOptimizerWrapper):  # pylint: disable=protected-access
-  def __init__(self, normalize, normalization_factor, model, optimizer):
-    super().__init__(model, optimizer)
-    self._normalize = normalize
-    self._normalization_factor = normalization_factor
-
-  def preprocess_gradients(self, x):
-    grad, var = x
-    if self._normalize and grad is not None:
-      grad = grad * array_ops.constant(1.0 / self._normalization_factor,
-                                       dtype=grad.dtype)
-    return grad, var
 
 
 class _Mode(enum.Enum):
@@ -83,7 +65,7 @@ class _Mode(enum.Enum):
 
 
 class KerasExtensionBase(base_layer.KerasExtension):
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def __init__(self):
     # Following values need to be serializable.
 
@@ -92,14 +74,12 @@ class KerasExtensionBase(base_layer.KerasExtension):
     self._pipelining_device_mapping = None
     self._pipelining_accumulate_outfeed = None
     self._pipelining_kwargs = dict()
-    self._experimental_pipelining_normalize_gradients = None
 
     # Gradient accumulation.
     self._gradient_accumulation_steps_per_replica = None
     self._gradient_accumulation_optimizer_kwargs = dict()
     self._gradient_accumulation_reduction_method = \
       gradient_accumulation_optimizer.GradientAccumulationReductionMethod.SUM
-    self._experimental_gradient_accumulation_normalize_gradients = None
 
     # Asynchronous callbacks.
     self._asynchronous_callbacks = False
@@ -109,8 +89,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
     self._outfeed_kwargs = dict()
 
     # Following values are runtime only.
-    self._use_synthetic_data = utils.use_synthetic_data_for(
-        utils.SyntheticDataCategory.Outfeed)
+    self._use_synthetic_data = ipu_utils.use_synthetic_data_for(
+        ipu_utils.SyntheticDataCategory.Outfeed)
     self._compiled_gradient_accumulation_steps_per_replica = None
     self._compiled_pipeline_gradient_accumulation_steps_per_replica = None
     self._compiled_pipeline_train_iterations = None
@@ -219,7 +199,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     # get_num_of_ipus_in_device() returns the number of devices for all instances combined.
     return int(
-        utils.get_num_of_ipus_in_device(device_string) /
+        ipu_utils.get_num_of_ipus_in_device(device_string) /
         popdist.getNumInstances())
 
   def _get_replication_factor(self):
@@ -312,7 +292,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     - The replication factor
     - The in- and outfeed managers
     """
-    with trackable.no_automatic_dependency_tracking_scope(self):
+    with utils.no_automatic_dependency_tracking_scope(self):
       self._ipu_train_function = None
       self._ipu_test_function = None
       self._ipu_predict_function = None
@@ -371,18 +351,17 @@ class KerasExtensionBase(base_layer.KerasExtension):
       shapes = outfeed_queue._flat_shapes  # pylint: disable=protected-access
       dtypes = outfeed_queue._flat_types  # pylint: disable=protected-access
       flat_buffers = [
-          array_ops.zeros(shape, dtype)
-          for shape, dtype in zip(shapes, dtypes)
+          tf.zeros(shape, dtype) for shape, dtype in zip(shapes, dtypes)
       ]
-      return nest.pack_sequence_as(
+      return tf.nest.pack_sequence_as(
           outfeed_queue._structure,  # pylint: disable=protected-access
           flat_buffers)
 
     results = outfeed_queue.dequeue()
-    results = nest.map_structure(lambda x: x[-1], results)
+    results = tf.nest.map_structure(lambda x: x[-1], results)
 
     if replication_factor > 1:
-      results = nest.map_structure(lambda x: x[-1], results)
+      results = tf.nest.map_structure(lambda x: x[-1], results)
 
     return results
 
@@ -407,10 +386,9 @@ class KerasExtensionBase(base_layer.KerasExtension):
         shapes = [[shape[0] * num_steps] + shape[1:] for shape in shapes]
       dtypes = outfeed_queue._flat_types  # pylint: disable=protected-access
       flat_buffers = [
-          array_ops.zeros(shape, dtype)
-          for shape, dtype in zip(shapes, dtypes)
+          tf.zeros(shape, dtype) for shape, dtype in zip(shapes, dtypes)
       ]
-      return nest.pack_sequence_as(
+      return tf.nest.pack_sequence_as(
           outfeed_queue._structure,  # pylint: disable=protected-access
           flat_buffers)
 
@@ -420,27 +398,19 @@ class KerasExtensionBase(base_layer.KerasExtension):
                                                       replication_factor)
 
   def _make_single_ipu_train_function(self):
-    @def_function.function(jit_compile=True)
+    @tf_function(jit_compile=True)
     def train_function(steps_per_execution, iterator, outfeed):
-      for _ in math_ops.range(steps_per_execution):
+      for _ in tf.range(steps_per_execution):
         outfeed.enqueue(self.train_step(next(iterator)))
 
     return train_function
 
   def _make_single_ipu_train_function_with_gradient_accumulation(
       self, gradient_accumulation_steps_per_replica):
-    # This gradient normalizer can only be enabled when the gradient accumulation
-    # reduction method is set to SUM. For other reduction methods, this acts as a
-    # pass-through v1 optimizer. Additionally, we do not scale down by
-    # replication factor since we use cross_replica_mean for reducing gradients
-    # across replicas
-    optimizer = _NormalizedKerasOptimizerWrapper(
-        self._experimental_gradient_accumulation_normalize_gradients,
-        (gradient_accumulation_steps_per_replica), self, self.optimizer)
 
     optimizer = \
       gradient_accumulation_optimizer.GradientAccumulationOptimizerV2(
-          optimizer,
+          self.optimizer,
           gradient_accumulation_steps_per_replica,
           reduction_method=self._gradient_accumulation_reduction_method,
           **self._gradient_accumulation_optimizer_kwargs)
@@ -460,14 +430,14 @@ class KerasExtensionBase(base_layer.KerasExtension):
       optimizer.apply_gradients(grads_and_vars)
       return {m.name: m.result() for m in self.metrics}
 
-    @def_function.function(jit_compile=True)
+    @tf_function(jit_compile=True)
     def train_function(steps_per_execution, iterator, outfeed):
-      for _ in math_ops.range(steps_per_execution):
+      for _ in tf.range(steps_per_execution):
         outfeed.enqueue(train_step(next(iterator)))
 
     return train_function
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _create_post_order(self):
     post_order_node_execution = []
     nodes_by_depth = self._nodes_by_depth
@@ -506,11 +476,11 @@ class KerasExtensionBase(base_layer.KerasExtension):
     training = add_loss and add_optimizer
     self._logged_bn_warning = False
 
-    @def_function.function(jit_compile=True)
+    @tf_function(jit_compile=True)
     def pipeline_function(_steps_per_execution, iterator, outfeed):
       # Get the shapes for all the inputs.
-      input_dtypes = nest.map_structure(lambda spec: spec.dtype,
-                                        iterator.element_spec)
+      input_dtypes = tf.nest.map_structure(lambda spec: spec.dtype,
+                                           iterator.element_spec)
 
       _, target_dtypes, sample_weight_dtypes = \
         data_adapter.unpack_x_y_sample_weight(input_dtypes)
@@ -521,15 +491,15 @@ class KerasExtensionBase(base_layer.KerasExtension):
       tensor_usage_count = self._tensor_usage_count
 
       # Dictionaries for mapping processed tensors between stages.
-      tensor_dict = OrderedDict()
-      num_tensors_per_key = OrderedDict()
+      tensor_dict = collections.OrderedDict()
+      num_tensors_per_key = collections.OrderedDict()
       computational_stages = []
 
       # Targets/sample weights can contain `None`s but they need to be passed
       # around between stages.
       def flatten_without_nones(x):
         output = []
-        for t in nest.flatten(x):
+        for t in tf.nest.flatten(x):
           if t is not None:
             output.append(t)
         return output
@@ -537,13 +507,13 @@ class KerasExtensionBase(base_layer.KerasExtension):
       def unflatten_and_add_nones(flat_x, structure):
         flat_x_with_nones = []
         next_idx = 0
-        for t in nest.flatten(structure):
+        for t in tf.nest.flatten(structure):
           if t is None:
             flat_x_with_nones.append(None)
           else:
             flat_x_with_nones.append(flat_x[next_idx])
             next_idx += 1
-        return nest.pack_sequence_as(structure, flat_x_with_nones)
+        return tf.nest.pack_sequence_as(structure, flat_x_with_nones)
 
       def stage(stage_id, *args, **kwargs):
         if kwargs and not args:
@@ -617,7 +587,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
               self._logged_bn_warning = True
 
           # Update tensor_dict.
-          for x_id, y in zip(node.flat_output_ids, nest.flatten(outputs)):
+          for x_id, y in zip(node.flat_output_ids, tf.nest.flatten(outputs)):
             tensor_dict[x_id] = [y] * tensor_usage_count[x_id]
 
         if stage_id == last_stage_id:
@@ -626,7 +596,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
             x_id = str(id(x))
             assert x_id in tensor_dict, 'Could not compute output ' + str(x)
             output_tensors.append(tensor_dict[x_id].pop())
-          preds = nest.pack_sequence_as(self._nested_outputs, output_tensors)
+          preds = tf.nest.pack_sequence_as(self._nested_outputs,
+                                           output_tensors)
           targets = unflatten_and_add_nones(flat_targets, target_dtypes)
           sample_weight = unflatten_and_add_nones(flat_sample_weight,
                                                   sample_weight_dtypes)
@@ -671,15 +642,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
       outfeed_mask = [True, False] if training else None
 
       def optimizer_function(loss, *_):
-        # This gradient normalizer can only be enabled when the gradient accumulation
-        # reduction method is set to SUM. For other reduction methods, this acts as a
-        # pass-through v1 optimizer. Additionally, we do not scale down by
-        # replication factor since we use cross_replica_mean for reducing gradients
-        # across replicas
-        optimizer = _NormalizedKerasOptimizerWrapper(
-            self._experimental_pipelining_normalize_gradients,
-            (gradient_accumulation_steps_per_replica), self, self.optimizer)
-        return pipelining_ops.OptimizerFunctionOutput(optimizer, loss)
+        return pipelining_ops.OptimizerFunctionOutput(self.optimizer, loss)
 
       opt = optimizer_function if add_optimizer else None
 
@@ -716,9 +679,9 @@ class KerasExtensionBase(base_layer.KerasExtension):
                                add_optimizer=True)
 
   def _make_single_ipu_test_function(self):
-    @def_function.function(jit_compile=True)
+    @tf_function(jit_compile=True)
     def test_function(steps_per_execution, iterator, outfeed):
-      for _ in math_ops.range(steps_per_execution):
+      for _ in tf.range(steps_per_execution):
         outfeed.enqueue(self.test_step(next(iterator)))
 
     return test_function
@@ -730,9 +693,9 @@ class KerasExtensionBase(base_layer.KerasExtension):
                                add_optimizer=False)
 
   def _make_single_ipu_predict_function(self):
-    @def_function.function(jit_compile=True)
+    @tf_function(jit_compile=True)
     def predict_function(steps_per_execution, iterator, outfeed):
-      for _ in math_ops.range(steps_per_execution):
+      for _ in tf.range(steps_per_execution):
         outfeed.enqueue(self.predict_step(next(iterator)))
 
     return predict_function
@@ -745,7 +708,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
   def _make_ipu_train_function_wrapper(self):
     def wrapper(pipeline_iterations, gradient_accumulation_steps_per_replica):
-      with trackable.no_automatic_dependency_tracking_scope(self):
+      with utils.no_automatic_dependency_tracking_scope(self):
         need_to_rerun = self._ipu_train_function is None
         if self._is_pipelined():
           # Pipelining needs to embed repeat count and gradient accumulation in
@@ -805,7 +768,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
   def _make_ipu_test_function_wrapper(self):
     def wrapper(pipeline_iterations):
-      with trackable.no_automatic_dependency_tracking_scope(self):
+      with utils.no_automatic_dependency_tracking_scope(self):
         need_to_rerun = self._ipu_test_function is None
         if self._is_pipelined():
           # Pipelining needs to embed number of iterations in the graph.
@@ -841,7 +804,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
   def _make_ipu_predict_function_wrapper(self):
     def wrapper(pipeline_iterations):
-      with trackable.no_automatic_dependency_tracking_scope(self):
+      with utils.no_automatic_dependency_tracking_scope(self):
         need_to_rerun = self._ipu_predict_function is None
         if self._is_pipelined():
           # Pipelining needs to embed number of iterations in the graph.
@@ -876,26 +839,17 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     return wrapper
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _set_asynchronous_callbacks_impl(self, asynchronous):
     self._asynchronous_callbacks = asynchronous
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _set_gradient_accumulation_options_impl(
       self, gradient_accumulation_steps_per_replica,
-      experimental_normalize_gradients, gradient_accumulation_reduction_method,
+      gradient_accumulation_reduction_method,
       gradient_accumulation_optimizer_kwargs):
     # The extension might need to be reset if any of the values are set.
     reset_extension = False
-
-    if experimental_normalize_gradients and \
-        gradient_accumulation_reduction_method != \
-          gradient_accumulation_optimizer.GradientAccumulationReductionMethod.SUM: # pylint: disable=line-too-long
-      raise ValueError(
-          "Setting `experimental_normalize_gradients` to True is only "
-          "supported when setting gradient_accumulation_reduction_method "
-          "to SUM. It is currently set to "
-          f"{gradient_accumulation_reduction_method}")
 
     self._gradient_accumulation_reduction_method = \
       gradient_accumulation_reduction_method
@@ -911,14 +865,9 @@ class KerasExtensionBase(base_layer.KerasExtension):
         gradient_accumulation_steps_per_replica
       reset_extension = True
 
-    if experimental_normalize_gradients is not None:
-      self._experimental_gradient_accumulation_normalize_gradients = \
-        experimental_normalize_gradients
-      reset_extension = True
-
     if gradient_accumulation_optimizer_kwargs is not None:
       if not isinstance(gradient_accumulation_optimizer_kwargs,
-                        (dict, collections_abc.Mapping)):
+                        (dict, collections.abc.Mapping)):
         raise TypeError(
             "`gradient_accumulation_optimizer_kwargs` must be a dictionary.")
 
@@ -941,20 +890,13 @@ class KerasExtensionBase(base_layer.KerasExtension):
     if reset_extension:
       self._reset_ipu_extension()
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _set_pipelining_options_impl(
       self, pipelining_gradient_accumulation_steps_per_replica,
       pipelining_device_mapping, accumulate_outfeed,
-      experimental_normalize_gradients, gradient_accumulation_reduction_method,
-      pipelining_kwargs):
+      gradient_accumulation_reduction_method, pipelining_kwargs):
     # The extension might need to be reset if any of the values are set.
     reset_extension = False
-
-    if experimental_normalize_gradients:
-      # TODO(T46014) - Change experimental_normalize_gradients to False
-      # and set gradient_accumulation_reduction_method to MEAN?
-      gradient_accumulation_reduction_method = \
-        gradient_accumulation_optimizer.GradientAccumulationReductionMethod.SUM
 
     self._gradient_accumulation_reduction_method = \
       gradient_accumulation_reduction_method
@@ -982,13 +924,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
       self._pipelining_accumulate_outfeed = accumulate_outfeed
       reset_extension = True
 
-    if experimental_normalize_gradients is not None:
-      self._experimental_pipelining_normalize_gradients = \
-        experimental_normalize_gradients
-      reset_extension = True
-
     if pipelining_kwargs is not None:
-      if not isinstance(pipelining_kwargs, (dict, collections_abc.Mapping)):
+      if not isinstance(pipelining_kwargs, (dict, collections.abc.Mapping)):
         raise TypeError("`pipelining_kwargs` must be a dictionary.")
 
       explicit_args = {
@@ -1029,7 +966,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     if reset_extension:
       self._reset_ipu_extension()
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _set_infeed_queue_options_impl(self, **kwargs):
     automatic_args = ["dataset", "infeed_spec", "element_spec"]
     for automatic_arg in automatic_args:
@@ -1046,7 +983,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     self._infeed_kwargs = kwargs
     self._reset_ipu_extension()
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _set_outfeed_queue_options_impl(self, **kwargs):
     invalid_args = ["outfeed_mode", "device_ordinal"]
     for invalid_arg in invalid_args:
@@ -1063,10 +1000,6 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     config["gradient_accumulation_steps_per_replica"] = \
           self._gradient_accumulation_steps_per_replica
-    config["experimental_gradient_accumulation_normalize_gradients"] = \
-      self._experimental_gradient_accumulation_normalize_gradients
-    config["experimental_pipelining_normalize_gradients"] = \
-      self._experimental_pipelining_normalize_gradients
     config["gradient_accumulation_reduction_method"] = \
       self._gradient_accumulation_reduction_method.value
     config["asynchronous_callbacks"] = self._asynchronous_callbacks
@@ -1120,12 +1053,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     return config_new
 
-  @trackable.no_automatic_dependency_tracking
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _from_base_config(self, config):
     self._gradient_accumulation_steps_per_replica = config.get(
         "gradient_accumulation_steps_per_replica", None)
-    self._experimental_gradient_accumulation_normalize_gradients = config.get(
-        "experimental_gradient_accumulation_normalize_gradients", None)
     self._pipelining_gradient_accumulation_steps_per_replica = config.get(
         "pipelining_gradient_accumulation_steps_per_replica", None)
     self._pipelining_device_mapping = config.get("pipelining_device_mapping",
@@ -1139,8 +1070,6 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     self._pipelining_accumulate_outfeed = config.get(
         "pipelining_accumulate_outfeed", None)
-    self._experimental_pipelining_normalize_gradients = config.get(
-        "experimental_pipelining_normalize_gradients", None)
     self._asynchronous_callbacks = config.get("asynchronous_callbacks", False)
     self._infeed_kwargs = config.get("infeed_kwargs", dict())
     self._outfeed_kwargs = config.get("outfeed_kwargs", dict())
@@ -1307,11 +1236,11 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
         for step in data_handler.steps():
           end_step = step + data_handler.step_increment
-          with trace.Trace('train',
-                           epoch_num=epoch,
-                           step_num=step,
-                           batch_size=batch_size,
-                           _r=1):
+          with tf.profiler.experimental.Trace('train',
+                                              epoch_num=epoch,
+                                              step_num=step,
+                                              batch_size=batch_size,
+                                              _r=1):
             if not asynchronous_callbacks:
               batch_begin_fn(step)
 
@@ -1517,7 +1446,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
         for step in data_handler.steps():
           end_step = step + data_handler.step_increment
-          with trace.Trace('test', step_num=step, _r=1):
+          with tf.profiler.experimental.Trace('test', step_num=step, _r=1):
             if not asynchronous_callbacks:
               batch_begin_fn(step)
 
@@ -1649,10 +1578,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
         def process_batch(outs, batch):
           if outs is None:
-            outs = nest.map_structure(lambda batch_output: [batch_output],
-                                      batch)
+            outs = tf.nest.map_structure(lambda batch_output: [batch_output],
+                                         batch)
           else:
-            nest.map_structure_up_to(
+            tf.nest.map_structure_up_to(
                 batch,
                 lambda output, batch_output: output.append(batch_output), outs,
                 batch)
@@ -1704,8 +1633,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
         outfeed.deleter  # pylint: disable=pointless-statement
 
       callbacks.on_predict_end()
-    all_outputs = nest.map_structure_up_to(batch_outputs,
-                                           training_module.concat, outputs)
+    all_outputs = tf.nest.map_structure_up_to(batch_outputs,
+                                              training_module.concat, outputs)
     return tf_utils.sync_to_numpy_or_python_type(all_outputs)
 
   @staticmethod
@@ -1725,8 +1654,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
     def get_dtype(spec):
       return spec.dtype
 
-    shapes = nest.map_structure(get_shape, x_spec)
-    dtypes = nest.map_structure(get_dtype, x_spec)
+    shapes = tf.nest.map_structure(get_shape, x_spec)
+    dtypes = tf.nest.map_structure(get_dtype, x_spec)
 
     return shapes, dtypes
 

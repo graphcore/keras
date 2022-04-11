@@ -24,8 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
+
 from tensorflow.python.training import gradient_descent
 from keras.engine import base_layer_utils
 
@@ -34,7 +33,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
   constant_d = constant_op.constant(x_val, shape=[32])
   constant_l = constant_op.constant(y_val, shape=[2])
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -44,7 +43,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
   constant_d = constant_op.constant(x_val, shape=[32])
 
-  ds = dataset_ops.Dataset.from_tensors(constant_d)
+  ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -57,7 +56,7 @@ def test_dataset_two_input_output(length=None,
                                   y_val=0.2,
                                   input_names=None,
                                   target_names=None):
-  ds = dataset_ops.Dataset.from_tensors(({
+  ds = tf.data.Dataset.from_tensors(({
       input_names[0]:
       constant_op.constant(x_val, shape=[32]),
       input_names[1]:
@@ -128,8 +127,8 @@ class BatchCallbackCounter(keras.callbacks.Callback):
     return self._logs
 
 
-class IPUModelModelTest(test.TestCase):
-  @test_util.run_v2_only
+class IPUModelModelTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testModelCreation(self):
     # Simple single input, single output model.
     input_layer = keras.layers.Input(shape=(2))
@@ -144,7 +143,7 @@ class IPUModelModelTest(test.TestCase):
     self.assertEqual(
         m._output_layers[0].get_output_at(0).get_shape().as_list(), [None, 4])  # pylint: disable=protected-access
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelCreationMultipleInput(self):
     # Simple two input, one output model.
     input_layer = keras.layers.Input(shape=(2))
@@ -165,7 +164,7 @@ class IPUModelModelTest(test.TestCase):
     self.assertEqual(
         m._output_layers[0].get_output_at(0).get_shape().as_list(), [None, 8])  # pylint: disable=protected-access
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelCreationMultipleOutput(self):
     # Simple one input, two output model.
     input_layer = keras.layers.Input(shape=(2))
@@ -183,7 +182,7 @@ class IPUModelModelTest(test.TestCase):
     for d in m._output_layers:  # pylint: disable=protected-access
       self.assertEqual(d.get_output_at(0).get_shape().as_list(), [None, 4])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMustCallCompileFit(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -195,7 +194,7 @@ class IPUModelModelTest(test.TestCase):
           RuntimeError, "You must compile your model before training/testing"):
         m.fit(test_dataset())
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testMustCallCompileEvaluate(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -207,7 +206,7 @@ class IPUModelModelTest(test.TestCase):
           RuntimeError, "You must compile your model before training/testing"):
         m.evaluate(test_dataset())
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testNeedTupleDatasetFit(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -220,7 +219,7 @@ class IPUModelModelTest(test.TestCase):
                                   r"When providing an infinite dataset"):
         m.fit(test_inference_dataset())
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testNeedTupleDatasetEvaluate(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -233,7 +232,7 @@ class IPUModelModelTest(test.TestCase):
                                   r"When providing an infinite dataset"):
         m.evaluate(test_inference_dataset())
 
-  # @test_util.run_v2_only
+  # @testing_utils.run_v2_only
   def testNeedNonTupleDatasetPredict(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -245,7 +244,7 @@ class IPUModelModelTest(test.TestCase):
                                   r"When providing an infinite dataset"):
         m.predict(test_dataset())
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testUnlimitedDatasetHasNoStepsPerEpoch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -258,7 +257,7 @@ class IPUModelModelTest(test.TestCase):
                                   r"When providing an infinite dataset"):
         m.fit(test_dataset(), epochs=2)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testResultsOneEpochWithTfOptimizerNoAccumulation_CpuMatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -297,7 +296,7 @@ class IPUModelModelTest(test.TestCase):
 
     self.assertAllClose(ipu_loss, cpu_loss)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithTensorData(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -326,7 +325,7 @@ class IPUModelModelTest(test.TestCase):
       self.assertEqual(len(history.history['loss']), 1)
       self.assertEqual(type(history.history['loss'][0]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithNumpyData(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -355,7 +354,7 @@ class IPUModelModelTest(test.TestCase):
       self.assertEqual(len(history.history['loss']), 1)
       self.assertEqual(type(history.history['loss'][0]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEvalWithNumpyData(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -378,7 +377,7 @@ class IPUModelModelTest(test.TestCase):
       result = m.evaluate(input_x, input_y, batch_size=1)
       self.assertEqual(type(result), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs1(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -410,7 +409,7 @@ class IPUModelModelTest(test.TestCase):
 
     self.assertEqual(cpu_result.shape, result.shape)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryWithKerasOptimizer(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -435,7 +434,7 @@ class IPUModelModelTest(test.TestCase):
       self.assertEqual(len(history.history['loss']), 1)
       self.assertEqual(type(history.history['loss'][0]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryTwoEpochs(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -461,7 +460,7 @@ class IPUModelModelTest(test.TestCase):
       self.assertEqual(type(history.history['loss'][0]), float)
       self.assertEqual(type(history.history['loss'][1]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryStepsPerExecution(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -482,7 +481,7 @@ class IPUModelModelTest(test.TestCase):
       m.fit(test_dataset(length=96), callbacks=[cb])
       self.assertEqual(cb.count(), 48)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitTwice(self):
     cfg = IPUConfig()
     report_helper = tu.ReportHelper()
@@ -540,7 +539,7 @@ class IPUModelModelTest(test.TestCase):
       # Don't need to compile the graph again.
       self.assert_num_reports(report_helper, 0)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryStepsPerEpochTwoEpochs(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -566,7 +565,7 @@ class IPUModelModelTest(test.TestCase):
       self.assertEqual(type(history.history['loss'][0]), float)
       self.assertEqual(type(history.history['loss'][1]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithLearningRateDecay(self):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
@@ -597,7 +596,7 @@ class IPUModelModelTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithExponentialDecayLearningRateSchedule(self):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
@@ -629,7 +628,7 @@ class IPUModelModelTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithPiecewiseConstantDecayLearningRateSchedule(self):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
@@ -661,7 +660,7 @@ class IPUModelModelTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithMetrics(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -689,7 +688,7 @@ class IPUModelModelTest(test.TestCase):
       self.assertEqual(type(history.history['accuracy'][0]), float)
       self.assertEqual(type(history.history['accuracy'][1]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEval_CpuMatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -714,7 +713,7 @@ class IPUModelModelTest(test.TestCase):
 
     self.assertAllClose(result, cpu_result)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testCallOrder(self):
     # Test which verifies that we can call evaluate/predict before fit.
     strategy = ipu.ipu_strategy.IPUStrategyV1()
@@ -735,7 +734,7 @@ class IPUModelModelTest(test.TestCase):
       m.fit(test_dataset(length=96))
       # No exception.
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredict_CpuMatch(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -757,7 +756,7 @@ class IPUModelModelTest(test.TestCase):
 
     self.assertAllClose(cpu_out, ipu_out)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testTrainMultipleInput(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -791,7 +790,7 @@ class IPUModelModelTest(test.TestCase):
 
       m.fit(ds)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testTrainMultipleInputMap(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -823,7 +822,7 @@ class IPUModelModelTest(test.TestCase):
           ])
       m.fit(*ds, batch_size=4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictNumpyData(self):
     xs = np.stack([np.ones(32, dtype=np.float32) * i for i in range(48)])
     strategy = ipu.ipu_strategy.IPUStrategyV1()
@@ -846,7 +845,7 @@ class IPUModelModelTest(test.TestCase):
     self.assertEqual(cpu_out.shape, ipu_out.shape)
     self.assertAllClose(cpu_out, ipu_out)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictNumpyDataTwoOutput(self):
     xs = np.stack([np.ones(32, dtype=np.float32) * i for i in range(48)])
 
@@ -871,7 +870,7 @@ class IPUModelModelTest(test.TestCase):
     for t_cpu, t_ipu in zip(cpu_out, ipu_out):
       self.assertAllClose(t_cpu, t_ipu)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictNumpyData3D(self):
     xs = np.stack([np.ones(32, dtype=np.float32) * i for i in range(48)])
 
@@ -898,7 +897,7 @@ class IPUModelModelTest(test.TestCase):
     self.assertEqual(cpu_out.shape, ipu_out.shape)
     self.assertAllClose(cpu_out, ipu_out)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictNumpyDataTwoOutput3D(self):
     xs = np.stack([np.ones(32, dtype=np.float32) * i for i in range(48)])
 
@@ -927,7 +926,7 @@ class IPUModelModelTest(test.TestCase):
     for t_cpu, t_ipu in zip(cpu_out, ipu_out):
       self.assertAllClose(t_cpu, t_ipu)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitVanillaKerasMatch(self):
     # IPU Model.
     strategy = ipu.ipu_strategy.IPUStrategyV1()
@@ -954,7 +953,7 @@ class IPUModelModelTest(test.TestCase):
     # Compare.
     self.assertAllClose(ipu_out.history['loss'], cpu_out.history['loss'])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testTrainMultipleInputMultipleOutput(self):
     # 3 inputs, 2 outputs.
     def data_fn():
@@ -963,9 +962,9 @@ class IPUModelModelTest(test.TestCase):
       x3 = np.ones((32), dtype=np.float64)
       y1 = np.ones((1), dtype=np.float64)
       y2 = np.ones((1), dtype=np.float64)
-      ds_x = dataset_ops.Dataset.from_tensors((x1, x2, x3))
-      ds_y = dataset_ops.Dataset.from_tensors((y1, y2))
-      ds_xy = dataset_ops.Dataset.zip(
+      ds_x = tf.data.Dataset.from_tensors((x1, x2, x3))
+      ds_y = tf.data.Dataset.from_tensors((y1, y2))
+      ds_xy = tf.data.Dataset.zip(
           (ds_x, ds_y)).repeat(32).batch(4, drop_remainder=True)
       return ds_xy
 
@@ -1027,7 +1026,7 @@ class IPUModelModelTest(test.TestCase):
     for key in out.history:
       self.assertAllClose(out.history[key], cpu_out.history[key])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testNestedClasses(self):
     init = keras.initializers.Constant(1)
 
@@ -1107,7 +1106,7 @@ class IPUModelModelTest(test.TestCase):
     self.assertEqual(np.shape(cpu_out), np.shape(out))
     self.assertAllClose(out.history['loss'], cpu_out.history['loss'])
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictMultipleOutput(self):
     def predict_input_fn():
       x1 = np.ones((64, 32), dtype=np.float32)
@@ -1163,7 +1162,7 @@ class IPUModelModelTest(test.TestCase):
     # Comparison.
     self.assertAllClose(cpu_predict_out, ipu_predict_out)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredictMultipleOutputDifferentShapes(self):
     def predict_input_fn():
       x1 = np.ones((64, 32), dtype=np.float32)
@@ -1221,7 +1220,7 @@ class IPUModelModelTest(test.TestCase):
 
     self.assertAllClose(cpu_predict_out, ipu_predict_out)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testAutocast_ComplexDatasetStructure(self):
     base_layer_utils.enable_v2_dtype_behavior()
 
@@ -1267,11 +1266,11 @@ class IPUModelModelTest(test.TestCase):
       x3 = np.ones((32), dtype=np.float64)
       y1 = np.ones((1), dtype=np.float64)
       y2 = np.ones((1), dtype=np.float64)
-      ds_x = dataset_ops.Dataset.from_tensors((x1, x2, x3))
-      ds_y = dataset_ops.Dataset.from_tensors((y1, y2))
-      ds_xy = dataset_ops.Dataset.zip(
+      ds_x = tf.data.Dataset.from_tensors((x1, x2, x3))
+      ds_y = tf.data.Dataset.from_tensors((y1, y2))
+      ds_xy = tf.data.Dataset.zip(
           (ds_x, ds_y)).repeat(32).batch(4, drop_remainder=True)
-      ds_x_tuple = dataset_ops.Dataset.zip(
+      ds_x_tuple = tf.data.Dataset.zip(
           (ds_x,)).repeat(32).batch(4, drop_remainder=True)
 
       m.fit(ds_xy)
@@ -1280,16 +1279,16 @@ class IPUModelModelTest(test.TestCase):
 
       # No exceptions thrown
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testUint8(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(np.array(range(30)))
-    dataset = dataset.map(lambda x: math_ops.cast(x, dtype=np.uint8)).batch(
+    dataset = tf.data.Dataset.from_tensor_slices(np.array(range(30)))
+    dataset = dataset.map(lambda x: tf.cast(x, dtype=np.uint8)).batch(
         1, drop_remainder=True).batch(1, drop_remainder=True)
 
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       i = keras.layers.Input(shape=[1])
-      ci = keras.layers.Lambda(lambda x: math_ops.cast(x, dtype=np.float16))(i)
+      ci = keras.layers.Lambda(lambda x: tf.cast(x, dtype=np.float16))(i)
       o = keras.layers.Dense(1, kernel_initializer='ones')(ci)
       m = keras.Model(i, o)
 
@@ -1303,4 +1302,4 @@ class IPUModelModelTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

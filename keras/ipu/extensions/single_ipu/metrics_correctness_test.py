@@ -27,8 +27,7 @@ from keras import losses
 from keras import metrics
 from keras import testing_utils
 from keras.utils import losses_utils
-from tensorflow.python.platform import test
-from tensorflow.python.util import nest
+
 from tensorflow.python import ipu
 
 
@@ -64,7 +63,7 @@ def custom_generator_multi_io(sample_weights=None):
     x = [inputs[start:end], inputs[start:end]]
     y = [targets_1[start:end], targets_2[start:end]]
     if sample_weights:
-      sw = nest.map_structure(lambda w: w[start:end], sample_weights)
+      sw = tf.nest.map_structure(lambda w: w[start:end], sample_weights)
     else:
       sw = None
     start = end
@@ -656,4 +655,4 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

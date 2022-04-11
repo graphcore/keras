@@ -27,7 +27,7 @@ from tensorflow.python.ipu import keras as ipu_keras
 def dataset_fn(batch_size=1):
   features = [i * np.ones((4), dtype=np.float32) for i in range(10)]
   labels = [i * np.ones(1, dtype=np.int32) for i in range(10)]
-  ds = dataset_ops.Dataset.from_tensor_slices((features, labels))
+  ds = tf.data.Dataset.from_tensor_slices((features, labels))
   ds = ds.repeat()
   return ds.batch(batch_size, drop_remainder=True)
 
@@ -35,13 +35,13 @@ def dataset_fn(batch_size=1):
 def predict_input_fn(length):
   inputs = [(i % 10) * np.ones((4, 4), dtype=np.float32)
             for i in range(length)]
-  ds = dataset_ops.Dataset.from_tensor_slices((inputs))
+  ds = tf.data.Dataset.from_tensor_slices((inputs))
   return ds
 
 
 class KerasModelsTests(test_util.TensorFlowTestCase):
   @tu.test_uses_ipus(num_ipus=4)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_sequential_and_pipeline(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 4
@@ -107,7 +107,7 @@ class KerasModelsTests(test_util.TensorFlowTestCase):
     self.assertAllClose(predict_seq, predict_cpu)
 
   @tu.test_uses_ipus(num_ipus=4)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_functional_and_pipeline(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 4
@@ -168,7 +168,7 @@ class KerasModelsTests(test_util.TensorFlowTestCase):
     self.assertAllClose(predict_model, predict_pipeline)
 
   @tu.test_uses_ipus(num_ipus=4)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_functional_and_sequential(self):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 4

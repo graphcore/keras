@@ -24,7 +24,7 @@ from keras import keras_parameterized
 from keras import layers
 from keras import metrics
 from keras import testing_utils
-from tensorflow.python.platform import test
+
 from tensorflow.python import ipu
 
 
@@ -157,4 +157,4 @@ class ResetStatesTest(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

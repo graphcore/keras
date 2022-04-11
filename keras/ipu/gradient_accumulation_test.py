@@ -21,7 +21,7 @@ from tensorflow.python import ipu
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
+
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
 from keras.datasets import mnist
@@ -34,7 +34,7 @@ def get_mnist_dataset(batch_size):
   x_train = x_train.astype('float32')
   y_train = y_train.astype('int32')
 
-  train_ds = dataset_ops.DatasetV2.from_tensor_slices(
+  train_ds = tf.data.DatasetV2.from_tensor_slices(
       (x_train, y_train)).batch(batch_size, drop_remainder=True).repeat()
 
   return train_ds.repeat()
@@ -83,7 +83,7 @@ class SimpleSubclassedModel(keras.engine.training.Model):
     return x
 
 
-class KerasGradientAccumulationTest(test.TestCase, parameterized.TestCase):
+class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
   TESTCASES = test_util.generate_combinations_with_testcase_name(
       model_fn=[
           simple_sequential_model, simple_functional_model,
@@ -95,7 +95,7 @@ class KerasGradientAccumulationTest(test.TestCase, parameterized.TestCase):
       reduction_method=list(gradient_accumulation_optimizer.GradientAccumulationReductionMethod))  # pylint: disable=line-too-long
 
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModels(self, model_fn, replication_factor, optimizer,
                  reduction_method):
     experimental_normalize_gradients = \
@@ -166,4 +166,4 @@ class KerasGradientAccumulationTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

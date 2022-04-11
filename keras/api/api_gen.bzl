@@ -94,6 +94,12 @@ def gen_api_init_files(
     # Disable them for now so that we don't get SymbolExposedTwiceError
     # from create_python_api.py
     packages_to_ignore = ["tensorflow.python.keras", "tensorflow.keras"]
+
+    # Begin IPU specific changes.
+    # Ignore the IPU package completely.
+    packages_to_ignore += ["tensorflow.python.ipu"]
+    # End IPU specific changes.
+
     native.genrule(
         name = name,
         outs = all_output_files,

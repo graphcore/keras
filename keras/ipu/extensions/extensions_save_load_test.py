@@ -16,19 +16,20 @@
 import tempfile
 import numpy as np
 from absl.testing import parameterized
+
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python import ipu
 
-from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu.keras import extensions
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import test
-from tensorflow.python.data.ops import dataset_ops
 from keras import models
+from keras.engine import base_layer
 from keras.engine import sequential
 from keras.saving import save
 from keras.engine import functional
 from keras.engine import training as training_module
 from keras import layers
+from keras import testing_utils
+from keras.ipu import extensions
 
 IN_SHAPE = (10, 32)
 OUT_CHANNELS = 16
@@ -36,10 +37,10 @@ NUM_SAMPLES = 4
 BATCH_SIZE = 2
 
 
-class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
-  @test_util.run_v2_only
+class KerasExtensionsSaveLoadTest(tf.test.TestCase, parameterized.TestCase):
+  @testing_utils.run_v2_only
   def testFunctionalExtension(self):
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
 
     class TestExtension(extensions.functional_extensions.FunctionalExtension):  # pylint: disable=abstract-method
       def __init__(self):
@@ -71,7 +72,8 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
 
     with strategy.scope():
       # Replace the extension with the test version.
-      strategy._register_keras_extension(functional.Functional, TestExtension)  # pylint: disable=protected-access
+      strategy._register_keras_extension(  # pylint: disable=protected-access
+          functional.Functional, base_layer.KerasExtension, TestExtension)
 
       inputs = {
           'x1': layers.Input(shape=(10,)),
@@ -102,9 +104,9 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
       loaded_model = models.model_from_json(model.to_json())
       self.assertTrue(model.test_option)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testSequentialExtension(self):
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
 
     class TestExtension(extensions.sequential_extensions.SequentialExtension):  # pylint: disable=abstract-method
       def __init__(self):
@@ -136,7 +138,8 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
 
     with strategy.scope():
       # Replace the extension with the test version.
-      strategy._register_keras_extension(sequential.Sequential, TestExtension)  # pylint: disable=protected-access
+      strategy._register_keras_extension(  # pylint: disable=protected-access
+          sequential.Sequential, base_layer.KerasExtension, TestExtension)
 
       model = sequential.Sequential([layers.Dense(1, activation='relu')])
       self.assertFalse(model.test_option)
@@ -193,10 +196,10 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
           'testcase_name': 'WithGetConfig',
           'model_cls': TestModelWithGetConfig
       })
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelExtension(self, model_cls):
     np.random.seed(42)
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
 
     # We have to run the model first to be able to save it.
     cfg = ipu.config.IPUConfig()
@@ -206,7 +209,7 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
 
     def create_dataset(shape, num_samples, batch_size):
       data = np.random.uniform(size=(num_samples,) + shape).astype(np.float32)
-      return dataset_ops.Dataset.from_tensor_slices(data).batch(
+      return tf.data.Dataset.from_tensor_slices(data).batch(
           batch_size, drop_remainder=True)
 
     class TestExtension(extensions.model_extensions.ModelExtension):  # pylint: disable=abstract-method
@@ -240,8 +243,8 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
 
     with strategy.scope():
       # Replace the extension with the test version.
-      # pylint: disable=protected-access
-      strategy._register_keras_extension(training_module.Model, TestExtension)
+      strategy._register_keras_extension(  # pylint: disable=protected-access
+          training_module.Model, base_layer.KerasExtension, TestExtension)
 
       dataset = create_dataset(IN_SHAPE, NUM_SAMPLES, BATCH_SIZE)
 
@@ -267,9 +270,9 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
         self.assertTrue(loaded_model.test_option)
         loaded_model.compile()
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelIncorrectOverrideError(self):
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
 
       class ModelWithIncorrectGetConfigOverride(training_module.Model):
@@ -294,7 +297,7 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
                               ModelWithIncorrectGetConfigOverride
                           })
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testModelDoesNotOverrideFromConfig(self):
     class ModelWithNonTrivialConstructor(training_module.Model):  # pylint: disable=abstract-method
       def __init__(self, depth):
@@ -307,7 +310,7 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
           x = dense_layer(x)
         return x
 
-    strategy = ipu_strategy.IPUStrategyV1()
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       # Attempt to save and load a model which has a non-trivial constructor but
       # doesn't override from_config.
@@ -328,4 +331,4 @@ class KerasExtensionsSaveLoadTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

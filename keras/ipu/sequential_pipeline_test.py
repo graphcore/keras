@@ -24,8 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
+
 from keras.mixed_precision import policy
 
 
@@ -34,7 +33,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
   constant_d = constant_op.constant(x_val, shape=[32])
   constant_l = constant_op.constant(y_val, shape=[2])
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -46,7 +45,7 @@ def test_language_dataset(length=None, batch_size=1):
   constant_d = constant_op.constant(1, shape=[32], dtype=np.int32)
   constant_l = constant_op.constant(2, shape=[32], dtype=np.int32)
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -57,7 +56,7 @@ def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
 
   constant_d = constant_op.constant(x_val, shape=[32])
 
-  ds = dataset_ops.Dataset.from_tensors(constant_d)
+  ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -116,8 +115,8 @@ class BatchCallbackCounter(keras.callbacks.Callback):
     return self._logs
 
 
-class IPUSequentialPipelineTest(test.TestCase):
-  @test_util.run_v2_only
+class IPUSequentialPipelineTest(tf.test.TestCase):
+  @testing_utils.run_v2_only
   def testGradientAccumulationSteps(self):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
 
@@ -139,7 +138,7 @@ class IPUSequentialPipelineTest(test.TestCase):
           r"\(7\)"):
         m.fit(test_dataset(length=64), epochs=4)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitCpuMatch(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -169,7 +168,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       ipu_weights = m.weights
     self.assertAllClose(cpu_weights, ipu_weights)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitHistoryStepsPerRun(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -193,7 +192,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       # Should be called 96 / 16 times
       self.assertEqual(cb.count(), 6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitTwice(self):
     cfg = IPUConfig()
     report_helper = tu.ReportHelper()
@@ -250,7 +249,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       # Don't need to compile the graph again.
       self.assert_num_reports(report_helper, 0)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithLearningRateDecay(self):
     cfg = IPUConfig()
     tu.enable_ipu_events(cfg)
@@ -280,7 +279,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithExponentialDecayLearningRateSchedule(self):
     cfg = IPUConfig()
     tu.enable_ipu_events(cfg)
@@ -311,7 +310,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithPiecewiseConstantDecayLearningRateSchedule(self):
     cfg = IPUConfig()
     tu.enable_ipu_events(cfg)
@@ -342,7 +341,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       report_json.parse_log()
       report_json.assert_num_host_to_device_transfer_events(6)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitWithMetrics(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -372,7 +371,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       self.assertEqual(type(history.history['accuracy'][0]), float)
       self.assertEqual(type(history.history['accuracy'][1]), float)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testFitAndEvaluateAccumulateOutfeed(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -424,7 +423,7 @@ class IPUSequentialPipelineTest(test.TestCase):
       self.assertAllClose(history, history_acc)
       self.assertEqual(cb.count(), cb_acc.count())
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEval_CpuMatch(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -444,7 +443,7 @@ class IPUSequentialPipelineTest(test.TestCase):
 
     self.assertAllClose(result, cpu_result)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testPredict_CpuMatch(self):
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -464,7 +463,7 @@ class IPUSequentialPipelineTest(test.TestCase):
 
     self.assertAllClose(result, cpu_result)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testGradientAccumulationDtype(self):
     def dtype_getter(var):
       self.assertEqual(var.dtype, np.float16)
@@ -489,7 +488,7 @@ class IPUSequentialPipelineTest(test.TestCase):
           cast_grads_and_vars = []
           for (g, v) in grads_and_vars:
             outer.assertEqual(g.dtype, np.float32)
-            cast_grads_and_vars.append((math_ops.cast(g, v.dtype), v))
+            cast_grads_and_vars.append((tf.cast(g, v.dtype), v))
           return super().apply_gradients(cast_grads_and_vars, name)
 
       opt = CastSGD()
@@ -501,4 +500,4 @@ class IPUSequentialPipelineTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

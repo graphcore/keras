@@ -36,7 +36,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import test
+
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.training import adam
@@ -217,7 +217,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     x = array_ops.ones((200, 3))
     y = array_ops.zeros((200, 2))
-    dataset = dataset_ops.Dataset.from_tensor_slices(
+    dataset = tf.data.Dataset.from_tensor_slices(
         (x, y)).batch(10, drop_remainder=True)
     expected_log = r'(.*- loss:.*- my_acc:.*)+'
 
@@ -287,7 +287,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     x = array_ops.ones((200, 3))
     y = array_ops.zeros((200, 2))
-    dataset = dataset_ops.Dataset.from_tensor_slices(
+    dataset = tf.data.Dataset.from_tensor_slices(
         (x, y)).batch(10, drop_remainder=True)
     expected_log = r'(.*- loss:.*- my_acc:.*)+'
 
@@ -303,9 +303,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     x = array_ops.ones((50, 3))
     y = array_ops.zeros((50, 2))
-    training_dataset = dataset_ops.Dataset.from_tensor_slices(
+    training_dataset = tf.data.Dataset.from_tensor_slices(
         (x, y)).batch(10, drop_remainder=True)
-    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+    val_dataset = tf.data.Dataset.from_tensor_slices(
         (x, y)).batch(10, drop_remainder=True)
     expected_log = r'(.*5/5.*- loss:.*- my_acc:.*- val_loss:.*- val_my_acc:.*)+'
 
@@ -339,14 +339,14 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       for _ in range(100):
         yield [1, 1], 1
 
-    training = dataset_ops.Dataset \
+    training = tf.data.Dataset \
         .from_generator(
             generator=generator,
             output_types=('float64', 'float64'),
             output_shapes=([2], [])) \
         .batch(2, drop_remainder=True) \
         .repeat()
-    validation = dataset_ops.Dataset \
+    validation = tf.data.Dataset \
         .from_generator(
             generator=generator,
             output_types=('float64', 'float64'),
@@ -638,7 +638,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       # Simple training input.
       train_input = [[1.]] * 16
       train_label = [[0.]] * 16
-      ds = dataset_ops.Dataset.from_tensor_slices((train_input, train_label))
+      ds = tf.data.Dataset.from_tensor_slices((train_input, train_label))
       return ds.batch(8, drop_remainder=True)
 
     # Very simple bias model to eliminate randomness.
@@ -1472,4 +1472,4 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

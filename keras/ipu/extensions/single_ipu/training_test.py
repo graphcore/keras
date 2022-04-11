@@ -27,13 +27,13 @@ import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
+from tensorflow.python.eager.def_function import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
+
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.platform import test
+
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python import ipu
 from keras import backend
@@ -109,7 +109,7 @@ class TrainingTest(keras_parameterized.TestCase):
     model = sequential.Sequential([layers_module.Dense(1)])
     model.compile('sgd', 'mse')
 
-    @def_function.function
+    @tf_function
     def my_fn():
       getattr(model, method_name)(1)
 
@@ -131,9 +131,9 @@ class TrainingTest(keras_parameterized.TestCase):
     targets = np.ones((40, 1), dtype=np.float32)
 
     # Test correctness with `steps_per_epoch`.
-    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+    train_dataset = tf.data.Dataset.from_tensor_slices(
         (inputs, targets)).batch(10, drop_remainder=True)
-    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+    val_dataset = tf.data.Dataset.from_tensor_slices(
         (inputs, targets)).batch(10, drop_remainder=True)
     history = model.fit(train_dataset,
                         epochs=2,
@@ -161,9 +161,9 @@ class TrainingTest(keras_parameterized.TestCase):
     targets = np.ones((40, 1), dtype=np.float32)
 
     # Test correctness with `steps_per_epoch`.
-    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+    train_dataset = tf.data.Dataset.from_tensor_slices(
         (inputs, targets)).batch(10, drop_remainder=True)
-    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+    val_dataset = tf.data.Dataset.from_tensor_slices(
         (inputs, targets)).batch(10, drop_remainder=True)
     history = model.fit(train_dataset,
                         epochs=2,
@@ -225,9 +225,9 @@ class TrainingTest(keras_parameterized.TestCase):
     targets = np.ones((40, 1), dtype=np.float32)
 
     # Test correctness with `steps_per_epoch`.
-    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+    train_dataset = tf.data.Dataset.from_tensor_slices(
         (inputs, targets)).batch(10, drop_remainder=True)
-    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+    val_dataset = tf.data.Dataset.from_tensor_slices(
         (inputs, targets)).batch(10, drop_remainder=True)
     history = model.fit(train_dataset,
                         epochs=2,
@@ -686,10 +686,10 @@ class TrainingTest(keras_parameterized.TestCase):
         return inputs * 2
 
     model = SubclassedModel()
-    dataset_one = dataset_ops.Dataset.range(2).batch(
-        2, drop_remainder=True).map(lambda x: math_ops.cast(x, np.float32))
-    dataset_two = dataset_ops.Dataset.range(3, 10).batch(
-        2, drop_remainder=True).map(lambda x: math_ops.cast(x, np.float32))
+    dataset_one = tf.data.Dataset.range(2).batch(
+        2, drop_remainder=True).map(lambda x: tf.cast(x, np.float32))
+    dataset_two = tf.data.Dataset.range(3, 10).batch(
+        2, drop_remainder=True).map(lambda x: tf.cast(x, np.float32))
     self.assertAllEqual([[0], [2]], model.predict(dataset_one, steps=1))
     self.assertAllEqual([[6], [8], [10], [12]],
                         model.predict(dataset_two, steps=2))
@@ -775,7 +775,7 @@ class TrainingTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse')
     x = np.ones((10, 10)).astype(np.float64)
     y = np.ones((10, 10)).astype(np.float64)
-    dataset = dataset_ops.Dataset.from_tensor_slices(
+    dataset = tf.data.Dataset.from_tensor_slices(
         (x, y)).batch(2, drop_remainder=True)
     model.fit(dataset)
     self.assertEqual(model._compute_dtype, 'float32')  # pylint: disable=protected-access
@@ -819,7 +819,7 @@ class TrainingTest(keras_parameterized.TestCase):
     # pylint: disable=abstract-method
     class MyModel(training_module.Model):
       def call(self, x):  # pylint: disable=arguments-differ
-        self.add_loss(math_ops.reduce_sum(x))
+        self.add_loss(tf.reduce_sum(x))
         return x
 
     model = MyModel()
@@ -972,8 +972,7 @@ class TrainingTest(keras_parameterized.TestCase):
       batch_size = 5
       expected_data_type = ops.Tensor
     elif input_type == 'dataset_array':
-      x = dataset_ops.Dataset.from_tensor_slices(x).batch(5,
-                                                          drop_remainder=True)
+      x = tf.data.Dataset.from_tensor_slices(x).batch(5, drop_remainder=True)
       batch_size = None
       expected_data_type = ops.Tensor
 
@@ -997,7 +996,7 @@ class TrainingTest(keras_parameterized.TestCase):
     inputs = layers_module.Input(shape=(1,), name='my_input')
     outputs = layers_module.Dense(1)(inputs)
     model = MyModel(inputs, outputs)
-    model.add_loss(math_ops.reduce_sum(outputs))
+    model.add_loss(tf.reduce_sum(outputs))
     model.compile('sgd', 'mse')
     model.fit(x, batch_size=batch_size)
     model.evaluate(x, batch_size=batch_size)
@@ -1023,8 +1022,8 @@ class TrainingTest(keras_parameterized.TestCase):
             metrics[metric.name] = metric.result()
         if use_custom_metrics:
           custom_metrics = {
-              'mean': math_ops.reduce_mean(pred),
-              'sum': math_ops.reduce_sum(pred)
+              'mean': tf.reduce_mean(pred),
+              'sum': tf.reduce_sum(pred)
           }
           metrics.update(custom_metrics)
         return metrics
@@ -1870,9 +1869,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     x = layers_module.Input(shape=(1,))
     y = layers_module.Dense(1, kernel_initializer='ones')(x)
     model = training_module.Model(x, y)
-    model.add_metric(math_ops.reduce_sum(y),
-                     name='metric_1',
-                     aggregation='mean')
+    model.add_metric(tf.reduce_sum(y), name='metric_1', aggregation='mean')
 
     if context.executing_eagerly():
       # This is not a use case in v1 graph mode.
@@ -1916,9 +1913,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         self.mean = metrics_module.Mean(name='metric_1')
 
       def call(self, x):  # pylint: disable=arguments-differ
-        self.add_metric(math_ops.reduce_sum(x),
-                        name='metric_2',
-                        aggregation='mean')
+        self.add_metric(tf.reduce_sum(x), name='metric_2', aggregation='mean')
         # Provide same name as in the instance created in __init__
         # for eager mode
         self.add_metric(self.mean(x), name='metric_1')
@@ -1956,7 +1951,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         self.built = True
 
       def call(self, inputs):  # pylint: disable=arguments-differ
-        self.add_metric(math_ops.reduce_sum(inputs),
+        self.add_metric(tf.reduce_sum(inputs),
                         name='metric_1',
                         aggregation='mean')
         return inputs + 1
@@ -1984,7 +1979,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
       def __call__(self, inputs):  # pylint: disable=arguments-differ
         outputs = self.dense(inputs)
-        self.add_metric(math_ops.reduce_sum(outputs),
+        self.add_metric(tf.reduce_sum(outputs),
                         name='metric_1',
                         aggregation='mean')
         return outputs
@@ -1996,7 +1991,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
       def call(self, inputs):  # pylint: disable=arguments-differ
         outputs = self.layer(inputs)
-        self.add_metric(math_ops.reduce_sum(outputs),
+        self.add_metric(tf.reduce_sum(outputs),
                         name='metric_2',
                         aggregation='mean')
         return outputs
@@ -2005,9 +2000,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     y = LayerWithNestedAddMetricLayer()(x)
 
     model = training_module.Model(x, y)
-    model.add_metric(math_ops.reduce_sum(y),
-                     name='metric_3',
-                     aggregation='mean')
+    model.add_metric(tf.reduce_sum(y), name='metric_3', aggregation='mean')
 
     if context.executing_eagerly():
       # This is not a use case in v1 graph mode.
@@ -2043,9 +2036,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
 
       def call(self, x):  # pylint: disable=arguments-differ
-        self.add_metric(math_ops.reduce_sum(x),
-                        name='metric_1',
-                        aggregation='mean')
+        self.add_metric(tf.reduce_sum(x), name='metric_1', aggregation='mean')
         return self.dense1(x)
 
     model = TestModel()
@@ -2073,9 +2064,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       def call(self, x):  # pylint: disable=arguments-differ
         self.add_metric(self.mean2(x), name='metric_2')
         self.add_metric(self.mean1(x), name='metric_1')
-        self.add_metric(math_ops.reduce_sum(x),
-                        name='metric_3',
-                        aggregation='mean')
+        self.add_metric(tf.reduce_sum(x), name='metric_3', aggregation='mean')
         return self.dense1(x)
 
     model = TestModel()
@@ -2120,7 +2109,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         self.add_metric(self.m1(x))
         self.add_metric(self.m3['mean4'](x))
         self.add_metric(self.m3['mean5'](x))
-        self.add_metric(math_ops.reduce_sum(x), name='m_6', aggregation='mean')
+        self.add_metric(tf.reduce_sum(x), name='m_6', aggregation='mean')
         return self.dense1(x)
 
     layer = TestLayer()
@@ -2167,7 +2156,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
 
       def call(self, x):  # pylint: disable=arguments-differ
-        self.add_metric(math_ops.reduce_sum(x), aggregation='mean')
+        self.add_metric(tf.reduce_sum(x), aggregation='mean')
         return self.dense1(x)
 
     model = TestModel()
@@ -2244,7 +2233,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return z
 
     xdata = np.random.uniform(size=[32, 16]).astype(np.float32)
-    dataset_train = dataset_ops.Dataset.from_tensor_slices((xdata, xdata))
+    dataset_train = tf.data.Dataset.from_tensor_slices((xdata, xdata))
     dataset_train = dataset_train.batch(32, drop_remainder=True)
 
     model = MyModel()
@@ -2268,9 +2257,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
 
       def call(self, x):  # pylint: disable=arguments-differ
-        self.add_metric(math_ops.reduce_sum(x),
-                        name='metric_1',
-                        aggregation='mean')
+        self.add_metric(tf.reduce_sum(x), name='metric_1', aggregation='mean')
         return self.dense1(x)
 
     model = TestModel()
@@ -2305,7 +2292,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
       def call(self, inputs):  # pylint: disable=arguments-differ
         outputs = self.dense(inputs)
-        self.add_metric(math_ops.reduce_sum(outputs),
+        self.add_metric(tf.reduce_sum(outputs),
                         name='mean',
                         aggregation='mean')
         return outputs
@@ -2314,9 +2301,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     y = LayerWithAddMetric()(x)
 
     inner_model = training_module.Model(x, y)
-    inner_model.add_metric(math_ops.reduce_sum(y),
-                           name='mean1',
-                           aggregation='mean')
+    inner_model.add_metric(tf.reduce_sum(y), name='mean1', aggregation='mean')
 
     inner_model.compile('sgd',
                         loss='mse',
@@ -2329,9 +2314,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     x = layers_module.Input(shape=[1])
     y = inner_model(x)
     outer_model = training_module.Model(x, y)
-    outer_model.add_metric(math_ops.reduce_sum(y),
-                           name='mean2',
-                           aggregation='mean')
+    outer_model.add_metric(tf.reduce_sum(y), name='mean2', aggregation='mean')
 
     outer_model.compile('sgd',
                         loss='mse',
@@ -2352,7 +2335,7 @@ class BareUpdateLayer(layers_module.Layer):
 
   def call(self, inputs):  # pylint: disable=arguments-differ
     state_ops.assign_add(self.counter, 1)
-    return math_ops.cast(self.counter, inputs.dtype) * inputs
+    return tf.cast(self.counter, inputs.dtype) * inputs
 
 
 class LambdaUpdateLayer(layers_module.Layer):
@@ -2367,7 +2350,7 @@ class LambdaUpdateLayer(layers_module.Layer):
   def call(self, inputs):  # pylint: disable=arguments-differ
     # Make sure update isn't run twice.
     self.add_update(lambda: state_ops.assign_add(self.counter, 1))
-    return math_ops.cast(self.counter, inputs.dtype) * inputs
+    return tf.cast(self.counter, inputs.dtype) * inputs
 
 
 class NestedUpdateLayer(layers_module.Layer):
@@ -2491,4 +2474,4 @@ class TestAutoUpdates(keras_parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

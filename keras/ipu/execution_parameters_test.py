@@ -28,7 +28,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
   constant_d = constant_op.constant(x_val, shape=[32])
   constant_l = constant_op.constant(y_val, shape=[2])
 
-  ds = dataset_ops.Dataset.from_tensors((constant_d, constant_l))
+  ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
 
@@ -55,7 +55,7 @@ class KerasModelExecutionParametersTest(test_util.TensorFlowTestCase,
                                         parameterized.TestCase):
   @parameterized.parameters([simple_sequential_model, simple_functional_model])
   @tu.test_uses_ipus(num_ipus=1)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testGradientAccumulation(self, model_fn):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 1
@@ -79,7 +79,7 @@ class KerasModelExecutionParametersTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([simple_sequential_model, simple_functional_model])
   @tu.test_uses_ipus(num_ipus=8)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testGradientAccumulationReplicated(self, model_fn):
     cfg = IPUConfig()
     cfg.auto_select_ipus = 8
