@@ -1581,7 +1581,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
             outs = tf.nest.map_structure(lambda batch_output: [batch_output],
                                          batch)
           else:
-            tf.nest.map_structure_up_to(
+            tf.__internal__.nest.map_structure_up_to(
                 batch,
                 lambda output, batch_output: output.append(batch_output), outs,
                 batch)
@@ -1633,8 +1633,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
         outfeed.deleter  # pylint: disable=pointless-statement
 
       callbacks.on_predict_end()
-    all_outputs = tf.nest.map_structure_up_to(batch_outputs,
-                                              training_module.concat, outputs)
+    all_outputs = tf.__internal__.nest.map_structure_up_to(
+        batch_outputs, training_module.concat, outputs)
     return tf_utils.sync_to_numpy_or_python_type(all_outputs)
 
   @staticmethod
