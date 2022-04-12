@@ -94,11 +94,11 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[0, 1, 2], [0, 1, 2]])
 
   def test_unknown_cardinality_dataset_with_steps_per_epoch(self):
-    ds = tf.data.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
+    ds = tf.data.Dataset.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
     filtered_ds = ds.filter(lambda x: x < 4)
     self.assertEqual(
         tf.data.experimental.cardinality(filtered_ds).numpy(),
-        tf.data.experimental.UNKNOWN)
+        tf.data.experimental.UNKNOWN_CARDINALITY)
 
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.IPUDataHandler(filtered_ds,
@@ -117,11 +117,11 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(data_handler.inferred_steps, 2)
 
   def test_unknown_cardinality_dataset_without_steps_per_epoch(self):
-    ds = tf.data.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
+    ds = tf.data.Dataset.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
     filtered_ds = ds.filter(lambda x: x < 4)
     self.assertEqual(
         tf.data.experimental.cardinality(filtered_ds).numpy(),
-        tf.data.experimental.UNKNOWN)
+        tf.data.experimental.UNKNOWN_CARDINALITY)
 
     with self.assertRaisesRegex(ValueError, "Could not infer the size of"):
       data_handler = data_adapter.IPUDataHandler(filtered_ds,
@@ -130,7 +130,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
       data_handler.inferred_steps  # pylint: disable=pointless-statement
 
   def test_insufficient_data(self):
-    ds = tf.data.DatasetV2.from_tensor_slices([0, 1])
+    ds = tf.data.Dataset.from_tensor_slices([0, 1])
     ds = ds.filter(lambda *args, **kwargs: True)
     data_handler = data_adapter.IPUDataHandler(ds,
                                                initial_epoch=0,
@@ -299,7 +299,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
         x,
         epochs=1,
         batch_size=2,
-        steps_per_execution=variables.Variable(3),
+        steps_per_execution=tf.Variable(3),
         replication_factor=None)
     data_handler.set_replication_factor(3)
 
