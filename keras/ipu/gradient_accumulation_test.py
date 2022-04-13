@@ -19,9 +19,7 @@ from absl.testing import parameterized
 from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
 from tensorflow.python import ipu
 from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
-
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
 from keras.datasets import mnist

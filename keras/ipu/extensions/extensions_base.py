@@ -34,6 +34,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu.ops import pipelining_ops
+from tensorflow.python.ipu import gradient_accumulation as ga
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
 from tensorflow.python.platform import tf_logging as logging
 
@@ -79,7 +80,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     self._gradient_accumulation_steps_per_replica = None
     self._gradient_accumulation_optimizer_kwargs = dict()
     self._gradient_accumulation_reduction_method = \
-      gradient_accumulation_optimizer.GradientAccumulationReductionMethod.SUM
+      ga.GradientAccumulationReductionMethod.SUM
 
     # Asynchronous callbacks.
     self._asynchronous_callbacks = False
@@ -852,7 +853,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
     reset_extension = False
 
     self._gradient_accumulation_reduction_method = \
-      gradient_accumulation_reduction_method
+      ga.GradientAccumulationReductionMethod.parse(
+        gradient_accumulation_reduction_method)
 
     if gradient_accumulation_steps_per_replica is not None:
       if not isinstance(gradient_accumulation_steps_per_replica,
@@ -899,7 +901,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
     reset_extension = False
 
     self._gradient_accumulation_reduction_method = \
-      gradient_accumulation_reduction_method
+      ga.GradientAccumulationReductionMethod.parse(
+        gradient_accumulation_reduction_method)
 
     if pipelining_gradient_accumulation_steps_per_replica is not None:
       if not isinstance(
@@ -1064,9 +1067,9 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     reduction_method_int = \
       config.get("gradient_accumulation_reduction_method",
-                 gradient_accumulation_optimizer.GradientAccumulationReductionMethod.SUM.value)  # pylint: disable=line-too-long
+                 ga.GradientAccumulationReductionMethod.SUM.value)  # pylint: disable=line-too-long
     self._gradient_accumulation_reduction_method = \
-      gradient_accumulation_optimizer.GradientAccumulationReductionMethod(reduction_method_int)  # pylint: disable=line-too-long
+      ga.GradientAccumulationReductionMethod(reduction_method_int)  # pylint: disable=line-too-long
 
     self._pipelining_accumulate_outfeed = config.get(
         "pipelining_accumulate_outfeed", None)

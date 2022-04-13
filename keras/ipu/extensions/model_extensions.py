@@ -21,8 +21,6 @@ import types
 
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
-
 from keras.ipu.extensions import extensions_base
 from keras.engine import base_layer_utils
 from keras.engine import functional
@@ -342,8 +340,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
   def set_gradient_accumulation_options(
       self,
       gradient_accumulation_steps_per_replica=None,
-      gradient_accumulation_reduction_method=gradient_accumulation_optimizer.
-      GradientAccumulationReductionMethod.SUM,
+      gradient_accumulation_reduction_method='sum',
       **gradient_accumulation_optimizer_kwargs):
     # pylint:disable=line-too-long
     """Sets the gradient accumulation options for non-pipelined models which are
@@ -384,7 +381,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
         float16, but gives smaller gradients and might require adjusting
         the learning-rate accordingly.
         Defaults to `GradientAccumulationReductionMethod.SUM`
-        (see :class:`~tensorflow.python.ipu.optimizers.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
+        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
       gradient_accumulation_optimizer_kwargs: All remaining keyword arguments
         are forwarded to
         :class:`~tensorflow.python.ipu.optimizers.GradientAccumulationOptimizerV2`.
@@ -400,14 +397,12 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
         gradient_accumulation_reduction_method,
         gradient_accumulation_optimizer_kwargs)
 
-  def set_pipelining_options(
-      self,
-      gradient_accumulation_steps_per_replica=None,
-      device_mapping=None,
-      accumulate_outfeed=None,
-      gradient_accumulation_reduction_method=gradient_accumulation_optimizer.
-      GradientAccumulationReductionMethod.SUM,
-      **pipelining_kwargs):
+  def set_pipelining_options(self,
+                             gradient_accumulation_steps_per_replica=None,
+                             device_mapping=None,
+                             accumulate_outfeed=None,
+                             gradient_accumulation_reduction_method='sum',
+                             **pipelining_kwargs):
     """Sets the pipelining options, including gradient accumulation options,
     for pipelined models.
 
@@ -469,7 +464,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
         accumulation especially when using float16, but gives smaller gradients
         and might require adjusting the learning-rate accordingly.
         Defaults to `GradientAccumulationReductionMethod.SUM`
-        (see :class:`~tensorflow.python.ipu.optimizers.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
+        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
       pipelining_kwargs: All remaining keyword arguments are forwarded to
         :func:`~tensorflow.python.ipu.pipelining_ops.pipeline`. Note that this
         dictionary is not serializable, which means that when the model is
