@@ -144,8 +144,6 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.parameters(list(ga.GradientAccumulationReductionMethod))
   @testing_utils.run_v2_only
   def testFitCpuMatch(self, reduction_method):
-    experimental_normalize_gradients = \
-        reduction_method == ga.GradientAccumulationReductionMethod.SUM
 
     cfg = IPUConfig()
     cfg.ipu_model.tiles_per_ipu = 8
@@ -170,7 +168,6 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
       m = simple_pipeline([32, 2], [0, 1], w=0.2)
       m.set_pipelining_options(
           gradient_accumulation_steps_per_replica=8,
-          experimental_normalize_gradients=experimental_normalize_gradients,
           gradient_accumulation_reduction_method=reduction_method)
       m.compile('sgd', loss='mse', steps_per_execution=16)
       m.fit(test_dataset(length=96), epochs=2, class_weight=class_weight)
@@ -188,7 +185,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     with strategy.scope():
       m = simple_pipeline([32, 2], [0, 1], w=0.2)
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       m.compile('sgd', loss='mse', steps_per_execution=16)
       m.fit(test_dataset(length=96), epochs=2)
 
@@ -204,8 +201,6 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.parameters(list(ga.GradientAccumulationReductionMethod))
   @testing_utils.run_v2_only
   def testFitTwice(self, reduction_method):
-    experimental_normalize_gradients = \
-        reduction_method == ga.GradientAccumulationReductionMethod.SUM
 
     cfg = IPUConfig()
     report_helper = tu.ReportHelper()
@@ -221,7 +216,6 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
       m = simple_pipeline([32, 32, 2], [0, 1, 1])
       m.set_pipelining_options(
           gradient_accumulation_steps_per_replica=8,
-          experimental_normalize_gradients=experimental_normalize_gradients,
           gradient_accumulation_reduction_method=reduction_method)
       m.compile('sgd', loss='mse', steps_per_execution=16)
       history = m.fit(ds, steps_per_epoch=16)
@@ -328,7 +322,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
 
       m = simple_pipeline([32, 2], [0, 1], w=0.2)
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=0.001,
                                                     decay=0.1)
       m.compile(opt, loss='mse', steps_per_execution=16)
@@ -358,7 +352,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
 
       m = simple_pipeline([32, 2], [0, 1], w=0.2)
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       lrs = keras.optimizer_v2.learning_rate_schedule.ExponentialDecay(
           0.001, 4, 0.1, staircase=True)
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=lrs)
@@ -389,7 +383,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
 
       m = simple_pipeline([32, 2], [0, 1], w=0.2)
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       lrs = keras.optimizer_v2.learning_rate_schedule.PiecewiseConstantDecay(
           boundaries=[8, 16], values=[0.001, 0.0005, 0.0001])
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=lrs)
@@ -412,7 +406,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     with strategy.scope():
       m = simple_pipeline([32, 2], [0, 1], w=0.2)
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       m.compile('sgd',
                 loss='mse',
                 metrics=['accuracy'],

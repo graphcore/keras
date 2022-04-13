@@ -21,7 +21,7 @@ from tensorflow.python import ipu
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
+from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer as ga
 from keras.datasets import mnist
 
 
@@ -90,15 +90,12 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
       replication_factor=[1, 2],
       optimizer=['sgd',
                  gradient_descent.GradientDescentOptimizer(0.001)],
-      reduction_method=list(gradient_accumulation_optimizer.GradientAccumulationReductionMethod))  # pylint: disable=line-too-long
+      reduction_method=list(ga.GradientAccumulationReductionMethod))
 
   @parameterized.named_parameters(*TESTCASES)
   @testing_utils.run_v2_only
   def testModels(self, model_fn, replication_factor, optimizer,
                  reduction_method):
-    experimental_normalize_gradients = \
-        reduction_method == gradient_accumulation_optimizer.GradientAccumulationReductionMethod.SUM  # pylint: disable=line-too-long
-
     tu.skip_if_not_enough_ipus(self, replication_factor)
 
     cfg = ipu.config.IPUConfig()
@@ -136,7 +133,6 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
       m.set_gradient_accumulation_options(
           gradient_accumulation_steps_per_replica=
           gradient_accumulation_steps_per_replica,
-          experimental_normalize_gradients=experimental_normalize_gradients,
           gradient_accumulation_reduction_method=reduction_method)
       m.fit(get_mnist_dataset(batch_size),
             steps_per_epoch=steps_per_epoch,
@@ -154,12 +150,8 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
             m._gradient_accumulation_steps_per_replica,  # pylint: disable=protected-access
             gradient_accumulation_steps_per_replica)
         self.assertEqual(
-            m._experimental_gradient_accumulation_normalize_gradients,  # pylint: disable=protected-access
-            experimental_normalize_gradients)
-        if not experimental_normalize_gradients:
-          self.assertEqual(
-              m._gradient_accumulation_reduction_method,  # pylint: disable=protected-access
-              reduction_method)
+            m._gradient_accumulation_reduction_method,  # pylint: disable=protected-access
+            reduction_method)
         self.assertFalse(m._gradient_accumulation_optimizer_kwargs)  # pylint: disable=protected-access
 
 

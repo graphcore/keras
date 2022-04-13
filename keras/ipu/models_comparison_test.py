@@ -75,7 +75,7 @@ class KerasModelsTests(test_util.TensorFlowTestCase):
       m = keras.Sequential(stage1() + stage2())
       m.set_gradient_accumulation_options(
           gradient_accumulation_steps_per_replica=4,
-          experimental_normalize_gradients=True)
+          gradient_accumulation_reduction_method='mean')
       m.compile(optimizer="adam", loss='mae', steps_per_execution=16)
 
       # Fit the weights to the dataset
@@ -91,7 +91,7 @@ class KerasModelsTests(test_util.TensorFlowTestCase):
     with strategy_pipeline.scope():
       m = keras.Sequential(stage1() + stage2())
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       m.set_pipeline_stage_assignment([0, 1])
       m.compile(optimizer="adam", loss='mae', steps_per_execution=16)
 
@@ -139,7 +139,7 @@ class KerasModelsTests(test_util.TensorFlowTestCase):
       m = keras.Model(*get_model())
       m.set_gradient_accumulation_options(
           gradient_accumulation_steps_per_replica=6,
-          experimental_normalize_gradients=True)
+          gradient_accumulation_reduction_method='mean')
       m.compile(optimizer="adam", loss='mae', steps_per_execution=24)
 
       # Fit the weights to the dataset
@@ -153,7 +153,7 @@ class KerasModelsTests(test_util.TensorFlowTestCase):
     with strategy_pipeline.scope():
       m = keras.Model(*get_model(pipeline_stages=[0, 1, 2]))
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=12,
-                               experimental_normalize_gradients=True,
+                               gradient_accumulation_reduction_method='mean',
                                device_mapping=[1, 0, 1])
       m.compile(optimizer="adam", loss='mae', steps_per_execution=24)
 

@@ -162,7 +162,7 @@ class IPUSequentialPipelineTest(tf.test.TestCase):
     with strategy.scope():
       m = fixed_weight_pipeline()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       m.compile('sgd', loss='mse', steps_per_execution=16)
       m.fit(test_dataset(length=96), epochs=2, class_weight=class_weight)
       ipu_weights = m.weights
@@ -179,7 +179,7 @@ class IPUSequentialPipelineTest(tf.test.TestCase):
     with strategy.scope():
       m = fixed_weight_pipeline()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       m.compile('sgd', loss='mse', steps_per_execution=16)
       m.fit(test_dataset(length=96), epochs=2)
 
@@ -207,7 +207,7 @@ class IPUSequentialPipelineTest(tf.test.TestCase):
 
       m = fixed_weight_pipeline()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       m.compile('sgd', loss='mse', steps_per_execution=16)
       history = m.fit(ds, steps_per_epoch=16)
 
@@ -268,7 +268,7 @@ class IPUSequentialPipelineTest(tf.test.TestCase):
 
       m = fixed_weight_pipeline()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=0.001,
                                                     decay=0.1)
       m.compile(opt, loss='mse', steps_per_execution=16)
@@ -298,7 +298,7 @@ class IPUSequentialPipelineTest(tf.test.TestCase):
 
       m = fixed_weight_pipeline()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       lrs = keras.optimizer_v2.learning_rate_schedule.ExponentialDecay(
           0.001, 4, 0.1, staircase=True)
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=lrs)
@@ -329,7 +329,7 @@ class IPUSequentialPipelineTest(tf.test.TestCase):
 
       m = fixed_weight_pipeline()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       lrs = keras.optimizer_v2.learning_rate_schedule.PiecewiseConstantDecay(
           boundaries=[8, 16], values=[0.001, 0.0005, 0.0001])
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=lrs)
@@ -352,7 +352,7 @@ class IPUSequentialPipelineTest(tf.test.TestCase):
     with strategy.scope():
       m = fixed_weight_pipeline()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=8,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
       m.compile('sgd',
                 loss='mse',
                 metrics=['accuracy'],

@@ -885,6 +885,14 @@ class KerasExtensionBase(base_layer.KerasExtension):
                          "`gradient_accumulation_steps_per_replica` argument "
                          "to `set_gradient_accumulation_options` instead.")
 
+      if ("experimental_normalize_gradients" in
+          gradient_accumulation_optimizer_kwargs):
+        raise ValueError(
+            "Found `experimental_normalize_gradients` argument to "
+            "`set_gradient_accumulation_options`. This argument "
+            "has now been removed, use "
+            "`gradient_accumulation_reduction_method` instead.")
+
       self._gradient_accumulation_optimizer_kwargs = \
         gradient_accumulation_optimizer_kwargs
       reset_extension = True
@@ -962,6 +970,13 @@ class KerasExtensionBase(base_layer.KerasExtension):
           raise ValueError(
               "Found `{}` key in `pipelining_kwargs`. This argument is "
               "not compatible with Keras.".format(invalid_arg))
+
+      if "experimental_normalize_gradients" in pipelining_kwargs:
+        raise ValueError(
+            "Found `experimental_normalize_gradients` argument to "
+            "`set_pipelining_options`. This argument has now been "
+            "removed, use "
+            "`gradient_accumulation_reduction_method` instead.")
 
       self._pipelining_kwargs = pipelining_kwargs
       reset_extension = True

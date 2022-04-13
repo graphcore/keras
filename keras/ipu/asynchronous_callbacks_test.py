@@ -195,12 +195,12 @@ class KerasAsynchronousCallbacksTest(tf.test.TestCase, parameterized.TestCase):
       if pipelined:
         m.set_pipelining_options(gradient_accumulation_steps_per_replica=
                                  gradient_accumulation_steps_per_replica,
-                                 experimental_normalize_gradients=True)
+                                 gradient_accumulation_reduction_method='mean')
       else:
         m.set_gradient_accumulation_options(
             gradient_accumulation_steps_per_replica=
             gradient_accumulation_steps_per_replica,
-            experimental_normalize_gradients=True)
+            gradient_accumulation_reduction_method='mean')
       cb = CountingCallback()
       m.fit(train_ds,
             steps_per_epoch=steps_per_epoch,
@@ -226,7 +226,7 @@ class KerasAsynchronousCallbacksTest(tf.test.TestCase, parameterized.TestCase):
         m.set_pipelining_options(gradient_accumulation_steps_per_replica=
                                  gradient_accumulation_steps_per_replica,
                                  accumulate_outfeed=True,
-                                 experimental_normalize_gradients=True)
+                                 gradient_accumulation_reduction_method='mean')
         cb = CountingCallback()
         m.evaluate(eval_ds, steps=steps_per_epoch, callbacks=[cb])
         self.assertEqual(

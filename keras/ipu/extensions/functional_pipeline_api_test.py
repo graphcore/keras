@@ -20,6 +20,7 @@ import tensorflow.compat.v2 as tf
 
 from tensorflow.python.ipu import config
 from tensorflow.python.ipu import ipu_strategy
+from tensorflow.python.ipu import gradient_accumulation as ga
 
 from keras.ipu import extensions
 from keras.engine import training as training_module
@@ -322,7 +323,7 @@ class FunctionalPipelineApiTest(tf.test.TestCase):
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=10,
                                device_mapping=[4, 3, 2, 1, 0],
                                accumulate_outfeed=True,
-                               experimental_normalize_gradients=True)
+                               gradient_accumulation_reduction_method='mean')
 
       with tempfile.TemporaryDirectory() as tmp:
         save_path = os.path.join(tmp, "model")
@@ -333,7 +334,9 @@ class FunctionalPipelineApiTest(tf.test.TestCase):
             10)
         self.assertEqual(m._pipelining_device_mapping, [4, 3, 2, 1, 0])  # pylint: disable=protected-access
         self.assertEqual(m._pipelining_accumulate_outfeed, True)  # pylint: disable=protected-access
-        self.assertEqual(m._experimental_pipelining_normalize_gradients, True)  # pylint: disable=protected-access
+        self.assertEqual(
+            m._gradient_accumulation_reduction_method,  # pylint: disable=protected-access
+            ga.GradientAccumulationReductionMethod.MEAN)
 
   def testPrintPipelineStageSummary(self):
     cfg = config.IPUConfig()
