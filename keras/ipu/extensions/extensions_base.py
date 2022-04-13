@@ -37,6 +37,7 @@ from tensorflow.python.ipu.ops import pipelining_ops
 from tensorflow.python.ipu import gradient_accumulation as ga
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import optimizer as tf_optimizer
 
 from keras import callbacks as callbacks_module
 from keras.ipu.extensions import data_adapter as ipu_data_adapter
@@ -54,9 +55,58 @@ from keras.utils import tf_inspect
 from keras.utils import tf_utils
 from keras.utils import version_utils
 from keras.saving.saved_model import utils
+from keras import optimizer_v1
 
 logged_steps_per_execution_warning = False
 _pvti_trace_channel = libpvti.createTraceChannel("Keras")
+
+
+class _KerasOptimizerWrapper(tf_optimizer.Optimizer):
+  """A class which wraps a Keras optimizer,
+  giving it a TensorFlow optimizer interface.
+  """
+  def __init__(self, model, opt):
+    super().__init__(use_locking=False, name="optimizer_shim")
+    self._model = model
+    self._optimizer = opt
+
+  def compute_gradients(  # pylint: disable=unused-argument
+      self,
+      loss,
+      var_list=None,
+      gate_gradients=tf_optimizer.Optimizer.GATE_OP,
+      aggregation_method=None,
+      colocate_gradients_with_ops=False,
+      grad_loss=None):
+    if not self._model and not var_list:
+      raise ValueError(
+          "When _KerasOptimizerWrapper has been instantiated with it's model "
+          "set to None, var_list must be provided.")
+
+    v = var_list if not self._model else self._model.trainable_weights
+
+    if isinstance(self._optimizer, optimizer_v1.TFOptimizer):
+      grads_and_vars = self._optimizer.get_grads(loss, v)
+    else:
+      grads = self._optimizer.get_gradients(loss, v)
+      grads_and_vars = zip(grads, v)
+
+    return grads_and_vars
+
+  def apply_gradients(self, grads_and_vars, global_step=None, name=None):  # pylint: disable=unused-argument
+    return self._optimizer.apply_gradients(grads_and_vars)
+
+  def _apply_sparse(self, grad, var):
+    raise NotImplementedError()
+
+  def _apply_dense(self, grad, var):
+    raise NotImplementedError()
+
+  def _resource_apply_dense(self, grad, handle):
+    raise NotImplementedError()
+
+  def _resource_apply_sparse(self, grad, handle, indices):
+    raise NotImplementedError()
 
 
 class _Mode(enum.Enum):
@@ -409,9 +459,11 @@ class KerasExtensionBase(base_layer.KerasExtension):
   def _make_single_ipu_train_function_with_gradient_accumulation(
       self, gradient_accumulation_steps_per_replica):
 
+    optimizer = _KerasOptimizerWrapper(self, self.optimizer)
+
     optimizer = \
       gradient_accumulation_optimizer.GradientAccumulationOptimizerV2(
-          self.optimizer,
+          optimizer,
           gradient_accumulation_steps_per_replica,
           reduction_method=self._gradient_accumulation_reduction_method,
           **self._gradient_accumulation_optimizer_kwargs)
@@ -643,7 +695,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
       outfeed_mask = [True, False] if training else None
 
       def optimizer_function(loss, *_):
-        return pipelining_ops.OptimizerFunctionOutput(self.optimizer, loss)
+        optimizer = _KerasOptimizerWrapper(self, self.optimizer)
+        return pipelining_ops.OptimizerFunctionOutput(optimizer, loss)
 
       opt = optimizer_function if add_optimizer else None
 
