@@ -108,6 +108,14 @@ def generate_install_latest_pip_commands():
   return commands
 
 
+def generate_tf_install_pip_package_commands(args):
+  return [
+      f"pip3 install --force-reinstall {args.tensorflow_wheel_path}",
+      # Remove all keras packages so that this build is used.
+      "pip3 uninstall -y keras*"
+  ]
+
+
 def generate_install_pip_package_commands(args):
   commands = ["pip3 install --upgrade setuptools wheel"]
 
@@ -133,11 +141,7 @@ def generate_install_pip_package_commands(args):
   for package in packages:
     commands.append(f"pip3 install \"{package}\"")
 
-  commands.append(
-      f"pip3 install --force-reinstall {args.tensorflow_wheel_path}")
-
-  # Remove all keras packages so that this build is used.
-  commands.append("pip3 uninstall -y keras*")
+  commands += generate_tf_install_pip_package_commands(args)
 
   # Install the linters.
   commands.append("pip3 install yapf==0.28.0")
@@ -271,15 +275,25 @@ def main():
       dest='disk_cache',
       default=None,
       help="Enable and specify the directory for Bazel's disk cache.")
+  parser.add_argument(
+      '-r',
+      '--reinstall-wheel-only',
+      dest='reinstall_wheel_only',
+      action='store_true',
+      default=False,
+      help="Whether to only reinstall the TensorFlow wheel file into the "
+      "virtual environment.")
 
   args = parser.parse_args()
   validate_args(args)
 
-  environment_setup_commands = (
-      generate_activate_poplar_commands() +
-      generate_create_and_source_venv_commands(args) +
-      generate_install_latest_pip_commands() +
-      generate_install_pip_package_commands(args))
+  environment_setup_commands = generate_activate_poplar_commands()
+  environment_setup_commands += generate_create_and_source_venv_commands(args)
+  environment_setup_commands += generate_install_latest_pip_commands()
+  environment_setup_commands += generate_tf_install_pip_package_commands(
+      args
+  ) if args.reinstall_wheel_only else generate_install_pip_package_commands(
+      args)
 
   environment = run_and_get_environment(environment_setup_commands)
 
