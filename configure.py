@@ -139,6 +139,11 @@ def generate_install_pip_package_commands(args):
   # Remove all keras packages so that this build is used.
   commands.append("pip3 uninstall -y keras*")
 
+  # Install the linters.
+  commands.append("pip3 install yapf==0.28.0")
+  commands.append("pip3 install pylint==2.7.4")
+  commands.append("pip3 install cpplint==1.4.4")
+
   return commands
 
 
