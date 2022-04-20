@@ -14,14 +14,14 @@
 # =============================================================================
 import numpy as np
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import test_utils as tu
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
 from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu import keras as ipu_keras
+
+import keras
+from keras import testing_utils
 
 
 def dataset_fn(batch_size=1):
@@ -120,7 +120,7 @@ class KerasModelsTests(tf.test.TestCase):
       if pipeline_stages:
         assert len(pipeline_stages) == n
         for s in pipeline_stages:
-          with ipu_keras.PipelineStage(s):
+          with keras.ipu.PipelineStage(s):
             x = keras.layers.Dense(
                 4,
                 activation=keras.activations.relu,
