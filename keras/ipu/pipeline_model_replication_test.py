@@ -62,4 +62,4 @@ class PipelineModelReplicatedTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  googletest.main()
+  tf.test.main()
