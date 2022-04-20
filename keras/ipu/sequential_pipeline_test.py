@@ -17,21 +17,21 @@
 import numpy as np
 import pva
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
 
+import keras
 from keras.mixed_precision import policy
+from keras import testing_utils
 
 
 def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 
-  constant_d = constant_op.constant(x_val, shape=[32])
-  constant_l = constant_op.constant(y_val, shape=[2])
+  constant_d = tf.constant(x_val, shape=[32])
+  constant_l = tf.constant(y_val, shape=[2])
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -42,8 +42,8 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 
 def test_language_dataset(length=None, batch_size=1):
 
-  constant_d = constant_op.constant(1, shape=[32], dtype=np.int32)
-  constant_l = constant_op.constant(2, shape=[32], dtype=np.int32)
+  constant_d = tf.constant(1, shape=[32], dtype=np.int32)
+  constant_l = tf.constant(2, shape=[32], dtype=np.int32)
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -54,7 +54,7 @@ def test_language_dataset(length=None, batch_size=1):
 
 def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
 
-  constant_d = constant_op.constant(x_val, shape=[32])
+  constant_d = tf.constant(x_val, shape=[32])
 
   ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
