@@ -66,62 +66,62 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "sequential_test",
-#     size = "large",
-#     srcs = ["sequential_test.py"],
-#     shard_count = 12,
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
-# )
+tf_py_test(
+    name = "sequential_test",
+    size = "large",
+    srcs = ["sequential_test.py"],
+    shard_count = 12,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "functional_model_test",
 #     size = "large",
 #     srcs = ["functional_model_test.py"],
 #     shard_count = 12,
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
 #     name = "pipeline_save_restore_test",
 #     size = "large",
 #     srcs = ["pipeline_save_restore_test.py"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
 #     name = "sequential_pipeline_save_restore_test",
 #     size = "large",
 #     srcs = ["sequential_pipeline_save_restore_test.py"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -129,28 +129,28 @@ tf_py_test(
 #     size = "large",
 #     srcs = ["synthetic_data_test.py"],
 #     tags = ["hw_poplar_test_2_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
 #     name = "feed_options_test",
 #     size = "large",
 #     srcs = ["feed_options_test.py"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -159,14 +159,14 @@ tf_py_test(
 #     srcs = ["execution_parameters_test.py"],
 #     shard_count = 13,
 #     tags = ["hw_poplar_test_8_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -174,14 +174,14 @@ tf_py_test(
 #     size = "large",
 #     srcs = ["model_replication_mnist_test.py"],
 #     tags = ["hw_poplar_test_4_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -190,14 +190,14 @@ tf_py_test(
 #     srcs = ["model_replication_test.py"],
 #     shard_count = 2,
 #     tags = ["hw_poplar_test_2_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -206,14 +206,14 @@ tf_py_test(
 #     srcs = ["models_comparison_test.py"],
 #     shard_count = 2,
 #     tags = ["hw_poplar_test_4_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -221,14 +221,14 @@ tf_py_test(
 #     size = "large",
 #     srcs = ["pipeline_model_replication_test.py"],
 #     tags = ["hw_poplar_test_4_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -236,14 +236,14 @@ tf_py_test(
 #     size = "large",
 #     srcs = ["pipeline_sequential_replication_test.py"],
 #     tags = ["hw_poplar_test_4_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -252,14 +252,14 @@ tf_py_test(
 #     srcs = ["sequential_replication_test.py"],
 #     shard_count = 2,
 #     tags = ["hw_poplar_test_4_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -268,14 +268,14 @@ tf_py_test(
 #     srcs = ["gradient_accumulation_test.py"],
 #     shard_count = 2,
 #     tags = ["hw_poplar_test_2_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )
 
 # tf_py_test(
@@ -284,12 +284,12 @@ tf_py_test(
 #     srcs = ["asynchronous_callbacks_test.py"],
 #     shard_count = 6,
 #     tags = ["hw_poplar_test_4_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
+# deps = [
+#     "//:expect_absl_installed",
+#     "//:expect_numpy_installed",
+#     "//:expect_tensorflow_installed",
+#     "//keras",
+#     "//keras:combinations",
+#     "//keras/api:keras_api",
+# ],
 # )

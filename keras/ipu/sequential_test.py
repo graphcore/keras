@@ -17,17 +17,16 @@
 import numpy as np
 import pva
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
-
 from tensorflow.python.training import gradient_descent
+
+import keras
 from keras.engine import base_layer_utils
+from keras import testing_utils
 
 
 def test_dataset(length=None,
@@ -36,8 +35,8 @@ def test_dataset(length=None,
                  y_val=0.2,
                  dtype=np.float32):
 
-  constant_d = constant_op.constant(x_val, shape=[32], dtype=dtype)
-  constant_l = constant_op.constant(y_val, shape=[2], dtype=dtype)
+  constant_d = tf.constant(x_val, shape=[32], dtype=dtype)
+  constant_l = tf.constant(y_val, shape=[2], dtype=dtype)
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -48,8 +47,8 @@ def test_dataset(length=None,
 
 def test_language_dataset(length=None, batch_size=1):
 
-  constant_d = constant_op.constant(1, shape=[32], dtype=np.int32)
-  constant_l = constant_op.constant(2, shape=[32], dtype=np.int32)
+  constant_d = tf.constant(1, shape=[32], dtype=np.int32)
+  constant_l = tf.constant(2, shape=[32], dtype=np.int32)
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -63,7 +62,7 @@ def test_inference_dataset(length=None,
                            x_val=1.0,
                            dtype=np.float32):
 
-  constant_d = constant_op.constant(x_val, shape=[32], dtype=dtype)
+  constant_d = tf.constant(x_val, shape=[32], dtype=dtype)
 
   ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
@@ -541,8 +540,8 @@ class IPUModelTest(tf.test.TestCase):
       m.compile(opt, loss='mse')
 
       # Input data
-      input_x = constant_op.constant(1.0, shape=[72, 32])
-      input_y = constant_op.constant(0.2, shape=[72, 2])
+      input_x = tf.constant(1.0, shape=[72, 32])
+      input_y = tf.constant(0.2, shape=[72, 2])
 
       # Fit the weights to the dataset
       with self.assertRaisesRegex(
@@ -564,8 +563,8 @@ class IPUModelTest(tf.test.TestCase):
       m.compile(opt, loss='mse')
 
       # Input data
-      input_x = constant_op.constant(1.0, shape=[72, 32])
-      input_y = constant_op.constant(0.2, shape=[72, 2])
+      input_x = tf.constant(1.0, shape=[72, 32])
+      input_y = tf.constant(0.2, shape=[72, 2])
 
       # Fit the weights to the dataset
       history = m.fit(input_x, input_y, batch_size=1)
@@ -739,17 +738,17 @@ class IPUModelTest(tf.test.TestCase):
       opt = keras.optimizer_v2.gradient_descent.SGD(learning_rate=0.001)
       m.compile(opt, loss='mse')
 
-      with self.assertRaisesWithPredicateMatch(errors.FailedPreconditionError,
-                                               "Unsupported datatype double"):
+      with self.assertRaisesWithPredicateMatch(
+          tf.errors.FailedPreconditionError, "Unsupported datatype double"):
         m.predict(test_inference_dataset(length=96, dtype=np.float64),
                   batch_size=2)
 
-      with self.assertRaisesWithPredicateMatch(errors.FailedPreconditionError,
-                                               "Unsupported datatype double"):
+      with self.assertRaisesWithPredicateMatch(
+          tf.errors.FailedPreconditionError, "Unsupported datatype double"):
         m.evaluate(test_dataset(length=96, dtype=np.float64), batch_size=2)
 
-      with self.assertRaisesWithPredicateMatch(errors.FailedPreconditionError,
-                                               "Unsupported datatype double"):
+      with self.assertRaisesWithPredicateMatch(
+          tf.errors.FailedPreconditionError, "Unsupported datatype double"):
         m.fit(test_dataset(length=96, dtype=np.float64), batch_size=2)
 
 
