@@ -52,20 +52,6 @@ tf_py_test(
 )
 
 # tf_py_test(
-#     name = "pipeline_input_validation_test",
-#     size = "medium",
-#     srcs = ["pipeline_input_validation_test.py"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
-# )
-
-# tf_py_test(
 #     name = "sequential_pipeline_test",
 #     size = "large",
 #     srcs = ["sequential_pipeline_test.py"],
