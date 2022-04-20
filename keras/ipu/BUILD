@@ -184,21 +184,21 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "model_replication_test",
-#     size = "large",
-#     srcs = ["model_replication_test.py"],
-#     shard_count = 2,
-#     tags = ["hw_poplar_test_2_ipus"],
-# deps = [
-#     "//:expect_absl_installed",
-#     "//:expect_numpy_installed",
-#     "//:expect_tensorflow_installed",
-#     "//keras",
-#     "//keras:combinations",
-#     "//keras/api:keras_api",
-# ],
-# )
+tf_py_test(
+    name = "model_replication_test",
+    size = "large",
+    srcs = ["model_replication_test.py"],
+    shard_count = 2,
+    tags = ["hw_poplar_test_2_ipus"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "models_comparison_test",

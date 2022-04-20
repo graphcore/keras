@@ -13,13 +13,15 @@
 # limitations under the License.
 # =============================================================================
 import numpy as np
-from tensorflow.python.ipu.config import IPUConfig
 
+import tensorflow.compat.v2 as tf
+
+from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import test_utils as tu
-from tensorflow.python import keras
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
 from tensorflow.python.ipu import ipu_strategy
+
+import keras
+from keras import testing_utils
 
 
 class IPUModelReplicatedTest(tf.test.TestCase):
