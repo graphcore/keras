@@ -110,19 +110,19 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "sequential_pipeline_save_restore_test",
-#     size = "large",
-#     srcs = ["sequential_pipeline_save_restore_test.py"],
-# deps = [
-#     "//:expect_absl_installed",
-#     "//:expect_numpy_installed",
-#     "//:expect_tensorflow_installed",
-#     "//keras",
-#     "//keras:combinations",
-#     "//keras/api:keras_api",
-# ],
-# )
+tf_py_test(
+    name = "sequential_pipeline_save_restore_test",
+    size = "large",
+    srcs = ["sequential_pipeline_save_restore_test.py"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "synthetic_data_test",
