@@ -462,9 +462,9 @@ class KerasExtensionsTest(tf.test.TestCase):
       input_x = layers.Input(shape=(80), dtype=np.int32, batch_size=32)
       input_y = layers.Input(shape=(1,), dtype=np.int32, batch_size=32)
 
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         x = layers.Dense(10)(input_x)
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         x = layers.Dense(1)(x)
         x = TwoInTwoOutIdentity()(x, input_y)[0]
 

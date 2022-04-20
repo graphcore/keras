@@ -18,19 +18,19 @@ import os
 import shutil
 import numpy as np
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
+
+import keras
+from keras import testing_utils
 
 
 def test_dataset(length=None, batch_size=1):
 
-  constant_d = constant_op.constant(1.0, shape=[32])
-  constant_l = constant_op.constant(0.2, shape=[2])
+  constant_d = tf.constant(1.0, shape=[32])
+  constant_l = tf.constant(0.2, shape=[2])
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -42,7 +42,7 @@ def test_dataset(length=None, batch_size=1):
 def fixed_weight_pipeline():
   input_layer = keras.Input(shape=(32))
 
-  with ipu.keras.PipelineStage(0):
+  with keras.ipu.PipelineStage(0):
     layer0 = keras.layers.Dense(
         4,
         name="layer0",
@@ -50,7 +50,7 @@ def fixed_weight_pipeline():
         bias_initializer=keras.initializers.Constant(0.0))
     output_layer = layer0(input_layer)
 
-  with ipu.keras.PipelineStage(1):
+  with keras.ipu.PipelineStage(1):
     layer1 = keras.layers.Dense(
         2,
         name="layer1",
@@ -178,7 +178,7 @@ class IPUPipelineTest(tf.test.TestCase):
       m = fixed_weight_pipeline()
       m.compile('sgd', loss='mse', steps_per_execution=48)
 
-      with self.assertRaisesRegex(errors.NotFoundError,
+      with self.assertRaisesRegex(tf.errors.NotFoundError,
                                   r"Failed to find any matching files"):
         m.load_weights("random_bad_path")
 
