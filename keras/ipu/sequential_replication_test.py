@@ -15,14 +15,14 @@
 from tempfile import TemporaryDirectory
 import numpy as np
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import test_utils as tu
-from tensorflow.python.data.ops.dataset_ops import DatasetV2
-from tensorflow.python import keras
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
 from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu import keras as ipu_keras
+
+import keras
+from keras import testing_utils
 from keras.datasets import mnist
 
 
@@ -98,10 +98,10 @@ class IPUSequentialReplicatedTest(tf.test.TestCase):
       y_train = y_train.astype('float32')
       x_test = x_test.astype('float32')
 
-      train_ds = DatasetV2.from_tensor_slices(
+      train_ds = tf.data.Dataset.from_tensor_slices(
           (x_train, y_train)).shuffle(10000).batch(32, drop_remainder=True)
 
-      predict_ds = DatasetV2.from_tensor_slices(x_test[:312 * 32]).batch(
+      predict_ds = tf.data.Dataset.from_tensor_slices(x_test[:312 * 32]).batch(
           32, drop_remainder=True)
 
       return train_ds.repeat(), predict_ds
@@ -148,7 +148,7 @@ class IPUSequentialReplicatedTest(tf.test.TestCase):
       with strategy.scope():
         ipu_model = keras.models.load_model(model_file)
         self.assertIsInstance(
-            ipu_model, ipu_keras.extensions.extensions_base.KerasExtensionBase)
+            ipu_model, keras.ipu.extensions.extensions_base.KerasExtensionBase)
         ipu_model.compile(steps_per_execution=8)
         ipu_predictions = ipu_model.predict(predict_ds, steps=16)
 
