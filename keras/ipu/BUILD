@@ -169,20 +169,20 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "model_replication_mnist_test",
-#     size = "large",
-#     srcs = ["model_replication_mnist_test.py"],
-#     tags = ["hw_poplar_test_4_ipus"],
-# deps = [
-#     "//:expect_absl_installed",
-#     "//:expect_numpy_installed",
-#     "//:expect_tensorflow_installed",
-#     "//keras",
-#     "//keras:combinations",
-#     "//keras/api:keras_api",
-# ],
-# )
+tf_py_test(
+    name = "model_replication_mnist_test",
+    size = "large",
+    srcs = ["model_replication_mnist_test.py"],
+    tags = ["hw_poplar_test_4_ipus"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "model_replication_test",
