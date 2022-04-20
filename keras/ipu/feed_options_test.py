@@ -16,10 +16,12 @@ import tempfile
 import numpy as np
 from absl.testing import parameterized
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+
+import keras
+from keras import testing_utils
 from keras.datasets import mnist
 
 

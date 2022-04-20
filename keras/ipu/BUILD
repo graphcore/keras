@@ -139,19 +139,19 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "feed_options_test",
-#     size = "large",
-#     srcs = ["feed_options_test.py"],
-# deps = [
-#     "//:expect_absl_installed",
-#     "//:expect_numpy_installed",
-#     "//:expect_tensorflow_installed",
-#     "//keras",
-#     "//keras:combinations",
-#     "//keras/api:keras_api",
-# ],
-# )
+tf_py_test(
+    name = "feed_options_test",
+    size = "large",
+    srcs = ["feed_options_test.py"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "execution_parameters_test",
