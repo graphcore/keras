@@ -17,21 +17,21 @@
 import numpy as np
 import pva
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
-
 from tensorflow.python.training import gradient_descent
+
+import keras
 from keras.engine import base_layer_utils
+from keras import testing_utils
 
 
 def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
-  constant_d = constant_op.constant(x_val, shape=[32])
-  constant_l = constant_op.constant(y_val, shape=[2])
+  constant_d = tf.constant(x_val, shape=[32])
+  constant_l = tf.constant(y_val, shape=[2])
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -41,7 +41,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 
 
 def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
-  constant_d = constant_op.constant(x_val, shape=[32])
+  constant_d = tf.constant(x_val, shape=[32])
 
   ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
@@ -58,14 +58,14 @@ def test_dataset_two_input_output(length=None,
                                   target_names=None):
   ds = tf.data.Dataset.from_tensors(({
       input_names[0]:
-      constant_op.constant(x_val, shape=[32]),
+      tf.constant(x_val, shape=[32]),
       input_names[1]:
-      constant_op.constant(x_val, shape=[16])
+      tf.constant(x_val, shape=[16])
   }, {
       target_names[0]:
-      constant_op.constant(y_val, shape=[2]),
+      tf.constant(y_val, shape=[2]),
       target_names[1]:
-      constant_op.constant(y_val, shape=[1])
+      tf.constant(y_val, shape=[1])
   }))
   ds = ds.repeat(length)
   ds = ds.batch(batch_size, drop_remainder=True)
@@ -312,8 +312,8 @@ class IPUModelModelTest(tf.test.TestCase):
       m.compile(opt, loss='mse')
 
       # Input data
-      input_x = constant_op.constant(1.0, shape=[72, 32])
-      input_y = constant_op.constant(0.2, shape=[72, 2])
+      input_x = tf.constant(1.0, shape=[72, 32])
+      input_y = tf.constant(0.2, shape=[72, 2])
 
       # Fit the weights to the dataset
       history = m.fit(input_x, input_y, batch_size=1)

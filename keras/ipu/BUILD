@@ -81,20 +81,20 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "functional_model_test",
-#     size = "large",
-#     srcs = ["functional_model_test.py"],
-#     shard_count = 12,
-# deps = [
-#     "//:expect_absl_installed",
-#     "//:expect_numpy_installed",
-#     "//:expect_tensorflow_installed",
-#     "//keras",
-#     "//keras:combinations",
-#     "//keras/api:keras_api",
-# ],
-# )
+tf_py_test(
+    name = "functional_model_test",
+    size = "large",
+    srcs = ["functional_model_test.py"],
+    shard_count = 12,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "pipeline_save_restore_test",
