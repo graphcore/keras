@@ -231,20 +231,20 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "pipeline_sequential_replication_test",
-#     size = "large",
-#     srcs = ["pipeline_sequential_replication_test.py"],
-#     tags = ["hw_poplar_test_4_ipus"],
-# deps = [
-#     "//:expect_absl_installed",
-#     "//:expect_numpy_installed",
-#     "//:expect_tensorflow_installed",
-#     "//keras",
-#     "//keras:combinations",
-#     "//keras/api:keras_api",
-# ],
-# )
+tf_py_test(
+    name = "pipeline_sequential_replication_test",
+    size = "large",
+    srcs = ["pipeline_sequential_replication_test.py"],
+    tags = ["hw_poplar_test_4_ipus"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "sequential_replication_test",
