@@ -15,7 +15,7 @@
 import numpy as np
 from tensorflow.python.ipu.config import IPUConfig
 
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
+from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -23,7 +23,7 @@ from tensorflow.python.ipu import ipu_strategy
 from tensorflow.python.ipu import keras as ipu_keras
 
 
-class PipelineModelReplicatedTest(test_util.TensorFlowTestCase):
+class PipelineModelReplicatedTest(tf.test.TestCase):
   @tu.test_uses_ipus(num_ipus=4)
   @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2Replicas2(self):

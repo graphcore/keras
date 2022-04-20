@@ -15,11 +15,13 @@
 import numpy as np
 from absl.testing import parameterized
 
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
+import tensorflow.compat.v2 as tf
+
+from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+
+import keras
+from keras import testing_utils
 from keras.datasets import mnist
 from keras.optimizer_v2 import gradient_descent
 
@@ -37,13 +39,13 @@ def get_mnist_dataset(batch_size):
   x_test = x_test.astype('float32')
   y_test = y_test.astype('float32')
 
-  train_ds = tf.data.DatasetV2.from_tensor_slices(
+  train_ds = tf.data.Dataset.from_tensor_slices(
       (x_train, y_train)).batch(batch_size, drop_remainder=True).repeat()
 
-  eval_ds = tf.data.DatasetV2.from_tensor_slices(
+  eval_ds = tf.data.Dataset.from_tensor_slices(
       (x_test, y_test)).batch(batch_size, drop_remainder=True).repeat()
 
-  predict_ds = tf.data.DatasetV2.from_tensor_slices(x_test).batch(
+  predict_ds = tf.data.Dataset.from_tensor_slices(x_test).batch(
       batch_size, drop_remainder=True).repeat()
 
   return train_ds, eval_ds, predict_ds

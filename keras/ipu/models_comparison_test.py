@@ -15,7 +15,7 @@
 import numpy as np
 
 from tensorflow.python.ipu.config import IPUConfig
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
+from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
@@ -39,7 +39,7 @@ def predict_input_fn(length):
   return ds
 
 
-class KerasModelsTests(test_util.TensorFlowTestCase):
+class KerasModelsTests(tf.test.TestCase):
   @tu.test_uses_ipus(num_ipus=4)
   @testing_utils.run_v2_only
   def test_sequential_and_pipeline(self):

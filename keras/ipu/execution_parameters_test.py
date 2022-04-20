@@ -15,7 +15,7 @@
 from absl.testing import parameterized
 
 from tensorflow.python.ipu.config import IPUConfig
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
+from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
@@ -51,7 +51,7 @@ def simple_functional_model():
   return keras.Model(d, x)
 
 
-class KerasModelExecutionParametersTest(test_util.TensorFlowTestCase,
+class KerasModelExecutionParametersTest(tf.test.TestCase,
                                         parameterized.TestCase):
   @parameterized.parameters([simple_sequential_model, simple_functional_model])
   @tu.test_uses_ipus(num_ipus=1)

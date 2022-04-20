@@ -254,7 +254,7 @@ TESTCASES = [
 ]
 
 
-class KerasPoprunTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+class KerasPoprunTest(tf.test.TestCase, parameterized.TestCase):
   def assert_gradients_are_equal(self, model_1, model_2):
     """Asserts that the last gradient from both models is identical.
 

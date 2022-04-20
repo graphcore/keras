@@ -89,7 +89,7 @@ class _KerasOptimizerWrapper(tf_optimizer.Optimizer):
       grads_and_vars = self._optimizer.get_grads(loss, v)
     else:
       grads = self._optimizer.get_gradients(loss, v)
-      grads_and_vars = zip(grads, v)
+      grads_and_vars = list(zip(grads, v))
 
     return grads_and_vars
 

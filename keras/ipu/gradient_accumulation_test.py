@@ -16,7 +16,7 @@ import tempfile
 import os
 from absl.testing import parameterized
 
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
+from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
@@ -32,7 +32,7 @@ def get_mnist_dataset(batch_size):
   x_train = x_train.astype('float32')
   y_train = y_train.astype('int32')
 
-  train_ds = tf.data.DatasetV2.from_tensor_slices(
+  train_ds = tf.data.Dataset.from_tensor_slices(
       (x_train, y_train)).batch(batch_size, drop_remainder=True).repeat()
 
   return train_ds.repeat()

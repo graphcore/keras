@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for training routines."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import io
 import sys
 
@@ -25,17 +21,16 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager.def_function import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
-
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python import ipu
+from tensorflow.python.eager import test
+
 from keras import backend
 from keras import keras_parameterized
 from keras import layers as layers_module

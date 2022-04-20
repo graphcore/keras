@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras callbacks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import csv
 import json
@@ -28,20 +24,18 @@ import sys
 import threading
 import time
 import unittest
-
 import numpy as np
 
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
-
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.training import adam
 from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 from tensorflow.python import ipu
+from tensorflow.python.eager import test
+
 from keras import keras_parameterized
 from keras import testing_utils
 from keras.engine import sequential

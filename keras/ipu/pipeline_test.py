@@ -17,15 +17,18 @@ from absl.testing import parameterized
 import numpy as np
 import pva
 
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
-from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.platform import tf_logging
+from tensorflow.python import ipu
+from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import gradient_accumulation as ga
-from keras import backend as K
+from tensorflow.python.eager import test
+
+import keras
+from keras import backend
+from keras import testing_utils
 
 
 def simple_model(layer_sizes, layer_stages, w=None, pipeline=False):
@@ -39,7 +42,7 @@ def simple_model(layer_sizes, layer_stages, w=None, pipeline=False):
     def __exit__(self, _exception_type, _value, _traceback):
       pass
 
-  scope = ipu.keras.PipelineStage if pipeline else DummyPipelineStage
+  scope = keras.ipu.PipelineStage if pipeline else DummyPipelineStage
   assert layer_sizes
   assert len(layer_sizes) == len(layer_stages)
 
@@ -90,8 +93,8 @@ def simple_sequential_pipeline(layer_sizes, layer_stages, w=None):
 
 
 def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
-  constant_d = constant_op.constant(x_val, shape=[32])
-  constant_l = constant_op.constant(y_val, shape=[2])
+  constant_d = tf.constant(x_val, shape=[32])
+  constant_l = tf.constant(y_val, shape=[2])
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -101,7 +104,7 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 
 
 def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
-  constant_d = constant_op.constant(x_val, shape=[32])
+  constant_d = tf.constant(x_val, shape=[32])
 
   ds = tf.data.Dataset.from_tensors(constant_d)
   ds = ds.repeat(length)
@@ -112,8 +115,8 @@ def test_inference_dataset(length=None, batch_size=1, x_val=1.0):
 
 def test_language_dataset(length=None, batch_size=1):
 
-  constant_d = constant_op.constant(1, shape=[32], dtype=np.int32)
-  constant_l = constant_op.constant(2, shape=[32], dtype=np.int32)
+  constant_d = tf.constant(1, shape=[32], dtype=np.int32)
+  constant_l = tf.constant(2, shape=[32], dtype=np.int32)
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -217,7 +220,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
       m.set_pipelining_options(
           gradient_accumulation_steps_per_replica=8,
           gradient_accumulation_reduction_method=reduction_method)
-      m.compile('sgd', loss='mse', steps_per_execution=16)
+      m.compile('adam', loss='mse', steps_per_execution=16)
       history = m.fit(ds, steps_per_epoch=16)
 
       l = history.history['loss'][0]
@@ -230,7 +233,6 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
 
       # Loss should be different after second training.
       self.assertTrue(l > history.history['loss'][0])
-
       w_2 = [w.numpy() for w in m.weights]
 
       # Weights should be different too.
@@ -271,13 +273,13 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
       input_layer = keras.layers.Input(shape=(32))
       init = keras.initializers.Constant(0.1)
 
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         y1 = keras.layers.Dense(2,
                                 activation=keras.activations.relu,
                                 kernel_initializer=init,
                                 name="output1")(input_layer)
 
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         y2 = keras.layers.Dense(2, kernel_initializer=init,
                                 name="output2")(input_layer)
 
@@ -509,12 +511,12 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
       input_layer = keras.layers.Input(shape=(32))
       init = keras.initializers.Constant(0.1)
 
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         y = keras.layers.Dense(32,
                                activation=keras.activations.relu,
                                kernel_initializer=init)(input_layer)
 
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         y = keras.layers.Dense(2,
                                activation=keras.activations.relu,
                                kernel_initializer=init)(y)
@@ -619,12 +621,12 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     with strategy.scope():
       inputs = keras.layers.Input(shape=[1])
 
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         x = keras.layers.Lambda(lambda x: tf.cast(x, dtype=np.float16))(inputs)
         x = keras.layers.Dense(10, dtype=np.float16,
                                kernel_initializer='ones')(x)
 
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         x = keras.layers.Dense(1, dtype=np.float16,
                                kernel_initializer='ones')(x)
 
@@ -651,11 +653,11 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
       layer2 = keras.layers.Dense(32,
                                   activation=keras.activations.relu,
                                   kernel_initializer='glorot_uniform')
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         x = layer1(input_layer)
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         x = layer2(x)
-      with ipu.keras.PipelineStage(2):
+      with keras.ipu.PipelineStage(2):
         x = layer1(x)
       m = keras.Model(input_layer, x)
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=6,
@@ -676,14 +678,14 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       input_layer = keras.layers.Input(shape=(32))
-      with ipu.keras.PipelineStage(0):  # Define stage 0 for layer.
+      with keras.ipu.PipelineStage(0):  # Define stage 0 for layer.
         layer = keras.layers.Dense(32,
                                    activation=keras.activations.relu,
                                    kernel_initializer='glorot_uniform')
 
       x = input_layer
       for stage in [0, 1, 2]:  # Define stages for nodes.
-        with ipu.keras.PipelineStage(stage):
+        with keras.ipu.PipelineStage(stage):
           x = layer(x)
 
       m = keras.Model(input_layer, x)
@@ -705,14 +707,14 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       input_layer = keras.layers.Input(shape=(32))
-      with ipu.keras.PipelineStage(0):  # Define stage 0 for layer.
+      with keras.ipu.PipelineStage(0):  # Define stage 0 for layer.
         layer = keras.layers.Dense(32,
                                    activation=keras.activations.relu,
                                    kernel_initializer='glorot_uniform')
 
       x = input_layer
       for stage in [0, 1]:  # Define stages for nodes.
-        with ipu.keras.PipelineStage(stage):
+        with keras.ipu.PipelineStage(stage):
           x = layer(x)
 
       m = keras.Model(input_layer, x)
@@ -739,11 +741,11 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
       cfg.configure_ipu_system()
 
       input_layer = keras.layers.Input(shape=(32))
-      with ipu.keras.PipelineStage(0):  # Define stage 0 for layer.
+      with keras.ipu.PipelineStage(0):  # Define stage 0 for layer.
         layer1 = keras.layers.Dense(32,
                                     activation=keras.activations.relu,
                                     kernel_initializer='glorot_uniform')
-      with ipu.keras.PipelineStage(1):  # Define stage 0 for layer.
+      with keras.ipu.PipelineStage(1):  # Define stage 0 for layer.
         layer2 = keras.layers.Dense(32,
                                     activation=keras.activations.relu,
                                     kernel_initializer='glorot_uniform')
@@ -776,7 +778,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
 
       def call(self, x, training=None):  #pylint: disable=arguments-differ
         if training is None:
-          training = K.learning_phase()
+          training = backend.learning_phase()
         self.training = training
         return x
 
@@ -785,9 +787,9 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       input_layer = keras.layers.Input(shape=(32))
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         x = keras.layers.Dense(32)(input_layer)
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         x = test_layer(x)
 
       m = keras.Model(input_layer, x)
@@ -812,14 +814,14 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     with strategy.scope():
       input1 = keras.layers.Input(32)
       input2 = keras.layers.Input(32)
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         x1 = keras.layers.Flatten()(input1)
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         x2 = keras.layers.Flatten()(input2)
       l = keras.layers.Dense(4)
-      with ipu.keras.PipelineStage(2):
+      with keras.ipu.PipelineStage(2):
         x1 = l(x1)
-      with ipu.keras.PipelineStage(3):
+      with keras.ipu.PipelineStage(3):
         x2 = l(x2)
 
       m = keras.Model((input1, input2), (x1, x2))
@@ -853,8 +855,7 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     # flushes, so the behaviour is undefined.
     ds = tf.data.Dataset.range(bs * grad_acc * num_updates)
     ds = ds.batch(bs, drop_remainder=True)
-    ds = ds.map(lambda x:
-                (tf.cast(x, dtypes.float32), tf.cast(x, dtypes.float32)))
+    ds = ds.map(lambda x: (tf.cast(x, tf.float32), tf.cast(x, tf.float32)))
 
     # Calculate what the moving statistics should be.
     # According to
@@ -879,9 +880,9 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       inp = keras.layers.Input(1)
-      with ipu.keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         x = keras.layers.BatchNormalization(momentum=bn_momentum)(inp)
-      with ipu.keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         x = keras.layers.Dense(1)(x)
 
       m = keras.Model((inp), (x))

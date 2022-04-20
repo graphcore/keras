@@ -31,7 +31,7 @@ def get_mnist_dataset(batch_size):
   x_test = x_test[..., np.newaxis]
   x_test = x_test.astype('float32')
 
-  predict_ds = tf.data.DatasetV2.from_tensor_slices(x_test).batch(
+  predict_ds = tf.data.Dataset.from_tensor_slices(x_test).batch(
       batch_size, drop_remainder=True).repeat()
 
   return predict_ds

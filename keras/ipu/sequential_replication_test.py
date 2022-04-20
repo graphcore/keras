@@ -16,7 +16,7 @@ from tempfile import TemporaryDirectory
 import numpy as np
 
 from tensorflow.python.ipu.config import IPUConfig
-from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
+from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python.data.ops.dataset_ops import DatasetV2
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
@@ -42,7 +42,7 @@ def stage2():
   ]
 
 
-class IPUSequentialReplicatedTest(test_util.TensorFlowTestCase):
+class IPUSequentialReplicatedTest(tf.test.TestCase):
   @tu.test_uses_ipus(num_ipus=4)
   @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2Replicas4(self):

@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@org_keras//keras:keras.bzl", "tf_py_test")
+
 package(
     default_visibility = [
         "//keras:__subpackages__",
@@ -34,42 +36,25 @@ py_library(
     deps = ["//keras/ipu/extensions"],
 )
 
-# tf_py_test(
-#     name = "automatic_loss_scaling_optimizer_test",
-#     size = "large",
-#     srcs = ["automatic_loss_scaling_optimizer_test.py"],
-#     shard_count = 8,
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
-# )
-
-# tf_py_test(
-#     name = "pipeline_test",
-#     size = "large",
-#     srcs = ["pipeline_test.py"],
-#     shard_count = 27,
-#     tags = ["isolated_poplar_tests"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
-# )
+tf_py_test(
+    name = "pipeline_test",
+    size = "large",
+    srcs = ["pipeline_test.py"],
+    shard_count = 27,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "pipeline_input_validation_test",
 #     size = "medium",
 #     srcs = ["pipeline_input_validation_test.py"],
-#     tags = ["isolated_poplar_tests"],
 #     deps = [
 #         "//:expect_absl_installed",
 #         "//:expect_numpy_installed",
@@ -85,7 +70,6 @@ py_library(
 #     size = "large",
 #     srcs = ["sequential_pipeline_test.py"],
 #     shard_count = 8,
-#     tags = ["isolated_poplar_tests"],
 #     deps = [
 #         "//:expect_absl_installed",
 #         "//:expect_numpy_installed",
@@ -144,7 +128,6 @@ py_library(
 #     name = "sequential_pipeline_save_restore_test",
 #     size = "large",
 #     srcs = ["sequential_pipeline_save_restore_test.py"],
-#     tags = ["isolated_poplar_tests"],
 #     deps = [
 #         "//:expect_absl_installed",
 #         "//:expect_numpy_installed",
@@ -159,22 +142,6 @@ py_library(
 #     name = "synthetic_data_test",
 #     size = "large",
 #     srcs = ["synthetic_data_test.py"],
-#     tags = ["hw_poplar_test_2_ipus"],
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
-# )
-
-# tf_py_test(
-#     name = "optimizers_v2_test",
-#     size = "large",
-#     srcs = ["optimizers_v2_test.py"],
-#     shard_count = 8,
 #     tags = ["hw_poplar_test_2_ipus"],
 #     deps = [
 #         "//:expect_absl_installed",

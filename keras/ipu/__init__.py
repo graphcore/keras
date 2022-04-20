@@ -16,6 +16,14 @@
 """
 
 from tensorflow.python.util.tf_export import keras_export
+
+# pylint: disable=unused-import
+from keras.ipu.extensions.functional_extensions import PipelineStage
+from keras.ipu.extensions.functional_extensions import FunctionalLayerPipelineStageAssignment
+from keras.ipu.extensions.sequential_extensions import SequentialLayerPipelineStageAssignment
+from keras.ipu.extensions.model_extensions import ModelLayerPipelineStageAssignment
+# pylint: enable=unused-import
+
 __ipu__built__ = '1'
 keras_export('keras.ipu.__ipu__built__').export_constant(
     __name__, '__ipu__built__')
