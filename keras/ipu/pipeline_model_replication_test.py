@@ -15,12 +15,13 @@
 import numpy as np
 from tensorflow.python.ipu.config import IPUConfig
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu import test_utils as tu
-from tensorflow.python import keras
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
 from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu import keras as ipu_keras
+
+import keras
+from keras import testing_utils
 
 
 class PipelineModelReplicatedTest(tf.test.TestCase):
@@ -39,10 +40,10 @@ class PipelineModelReplicatedTest(tf.test.TestCase):
                                        dtype=np.single,
                                        batch_size=2)
       init = keras.initializers.Constant(0.1)
-      with ipu_keras.PipelineStage(0):
+      with keras.ipu.PipelineStage(0):
         x = keras.layers.Dense(4, name="layer0",
                                kernel_initializer=init)(input_layer)
-      with ipu_keras.PipelineStage(1):
+      with keras.ipu.PipelineStage(1):
         x = keras.layers.Dense(2, name="layer1", kernel_initializer=init)(x)
       m = keras.Model(input_layer, x)
 
