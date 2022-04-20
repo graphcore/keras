@@ -16,12 +16,15 @@ import tempfile
 import os
 from absl.testing import parameterized
 
+import tensorflow.compat.v2 as tf
+
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
-from tensorflow.python import keras
-from tensorflow.python.framework import test_util
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer as ga
+
+import keras
+from keras import testing_utils
 from keras.datasets import mnist
 
 
@@ -82,20 +85,20 @@ class SimpleSubclassedModel(keras.engine.training.Model):
 
 
 class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
-  TESTCASES = test_util.generate_combinations_with_testcase_name(
+  TESTCASES = testing_utils.generate_combinations_with_testcase_name(
       model_fn=[
           simple_sequential_model, simple_functional_model,
           lambda: SimpleSubclassedModel([10, 20, 10])
       ],
       replication_factor=[1, 2],
-      optimizer=['sgd',
-                 gradient_descent.GradientDescentOptimizer(0.001)],
-      reduction_method=list(ga.GradientAccumulationReductionMethod))
+      reduction_method=[
+          ga.GradientAccumulationReductionMethod.MEAN,
+          ga.GradientAccumulationReductionMethod.RUNNING_MEAN
+      ])
 
   @parameterized.named_parameters(*TESTCASES)
   @testing_utils.run_v2_only
-  def testModels(self, model_fn, replication_factor, optimizer,
-                 reduction_method):
+  def testModels(self, model_fn, replication_factor, reduction_method):
     tu.skip_if_not_enough_ipus(self, replication_factor)
 
     cfg = ipu.config.IPUConfig()
@@ -110,8 +113,7 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
     steps_per_epoch = 64
     epochs = 2
 
-    if optimizer == 'sgd':
-      optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+    optimizer = gradient_descent.GradientDescentOptimizer(0.1)
 
     # Run on CPU - simulate gradient accumulation by just using a bigger batch
     # size but less steps per epoch.
