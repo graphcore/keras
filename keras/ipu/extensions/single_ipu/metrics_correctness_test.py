@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests metrics correctness using Keras model."""
 
+import tensorflow.compat.v2 as tf
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -66,8 +68,7 @@ def custom_generator_multi_io(sample_weights=None):
     yield x, y, sw
 
 
-@keras_parameterized.run_with_all_model_types(
-    exclude_models=['sequential', 'subclass'])
+@keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
 @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
                                          always_skip_v1=True)
 class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
@@ -84,7 +85,7 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     return model
 
   def setUp(self):
-    super().setUp()
+    super(TestMetricsCorrectnessMultiIO, self).setUp()  # pylint: disable=super-with-arguments
     self.x = np.asarray([[1.], [2.], [3.], [4.], [5.]])
     self.y1 = np.asarray([[2.], [4.], [6.], [8.], [10.]])
     self.y2 = np.asarray([[1.], [2.], [3.], [4.], [5.]])
@@ -194,7 +195,7 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
 
   def tearDown(self):
     self._ipu_strategy_scope.__exit__(None, None, None)
-    super().tearDown()
+    super(TestMetricsCorrectnessMultiIO, self).setUp()  # pylint: disable=super-with-arguments
 
   def test_fit(self):
     model = self._get_compiled_multi_io_model()
@@ -347,7 +348,7 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
       yield x[start:end], y[start:end], None if w is None else w[start:end]
 
   def setUp(self):
-    super().setUp()
+    super(TestMetricsCorrectnessSingleIO, self).setUp()  # pylint: disable=super-with-arguments
     self.x = np.asarray([[1.], [2.], [3.], [4.]])
     self.y = np.asarray([[2.], [4.], [6.], [8.]])
     self.sample_weight = np.asarray([2., 3., 4., 5.])
@@ -411,7 +412,7 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
 
   def tearDown(self):
     self._ipu_strategy_scope.__exit__(None, None, None)
-    super().tearDown()
+    super(TestMetricsCorrectnessSingleIO, self).setUp()  # pylint: disable=super-with-arguments
 
   def test_fit(self):
     model = self._get_model()
@@ -513,7 +514,7 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
     return model
 
   def setUp(self):
-    super().setUp()
+    super(TestOutputLossMetrics, self).setUp()  # pylint: disable=super-with-arguments
     self.x = np.asarray([[1.], [2.], [3.], [4.], [5.], [6.]])
     self.y1 = np.asarray([[2.], [4.], [6.], [8.], [10.], [12.]])
     self.y2 = np.asarray([[1.], [2.], [3.], [4.], [5.], [6.]])
@@ -595,7 +596,7 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
 
   def tearDown(self):
     self._ipu_strategy_scope.__exit__(None, None, None)
-    super().tearDown()
+    super(TestOutputLossMetrics, self).setUp()  # pylint: disable=super-with-arguments
 
   def test_fit(self, reduction):
     model = self._get_compiled_multi_io_model(loss=losses.MeanSquaredError(
