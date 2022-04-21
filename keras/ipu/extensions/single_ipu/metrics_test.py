@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for Keras metrics functions."""
 
+import tensorflow.compat.v2 as tf
+
 import numpy as np
 
 from keras import keras_parameterized
@@ -43,7 +45,7 @@ def _get_model(compile_metrics):
                                          always_skip_v1=True)
 class ResetStatesTest(keras_parameterized.TestCase):
   def setUp(self):
-    super().setUp()
+    super(ResetStatesTest, self).setUp()  # pylint: disable=super-with-arguments
     cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.ipu_model.compile_ipu_code = False
@@ -55,7 +57,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
 
   def tearDown(self):
     self._ipu_strategy_scope.__exit__(None, None, None)
-    super().tearDown()
+    super(ResetStatesTest, self).tearDown()  # pylint: disable=super-with-arguments
 
   def test_reset_states_false_positives(self):
     fp_obj = metrics.FalsePositives()
