@@ -14,17 +14,17 @@
 # ==============================================================================
 """Tests for numerical correctness."""
 
+import tensorflow.compat.v2 as tf
+
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import keras
-
-from tensorflow.python import ipu
+import keras
 from keras import keras_parameterized
 from keras import testing_utils
+from tensorflow.python import ipu
 
 
-# pylint: disable=abstract-method
 class MultiInputSubclassed(keras.Model):
   """Subclassed Model that adds its inputs and then adds a bias."""
   def __init__(self):
@@ -47,12 +47,12 @@ def multi_input_functional():
   return keras.Model([input_1, input_2, input_3], output)
 
 
-@keras_parameterized.run_with_all_model_types()
-@keras_parameterized.run_all_keras_modes(always_skip_eager=True,
-                                         always_skip_v1=True)
+@keras_parameterized.run_with_all_model_types
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True,
+                                         always_skip_eager=True)
 class SimpleBiasTest(keras_parameterized.TestCase):
   def setUp(self):
-    super().setUp()
+    super(SimpleBiasTest, self).setUp()  # pylint: disable=super-with-arguments
     cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.ipu_model.compile_ipu_code = False
@@ -64,7 +64,7 @@ class SimpleBiasTest(keras_parameterized.TestCase):
 
   def tearDown(self):
     self._ipu_strategy_scope.__exit__(None, None, None)
-    super().tearDown()
+    super(SimpleBiasTest, self).tearDown()  # pylint: disable=super-with-arguments
 
   def _get_simple_bias_model(self):
     model = testing_utils.get_model_from_layers([testing_utils.Bias()],
@@ -98,11 +98,11 @@ class SimpleBiasTest(keras_parameterized.TestCase):
     self.assertAllClose(x, pred)
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_eager=True,
-                                         always_skip_v1=True)
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True,
+                                         always_skip_eager=True)
 class MultipleInputTest(keras_parameterized.TestCase):
   def setUp(self):
-    super().setUp()
+    super(MultipleInputTest, self).setUp()  # pylint: disable=super-with-arguments
     cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.ipu_model.compile_ipu_code = False
@@ -114,7 +114,7 @@ class MultipleInputTest(keras_parameterized.TestCase):
 
   def tearDown(self):
     self._ipu_strategy_scope.__exit__(None, None, None)
-    super().tearDown()
+    super(MultipleInputTest, self).tearDown()  # pylint: disable=super-with-arguments
 
   def _get_multiple_input_model(self, subclassed=True):
     if subclassed:

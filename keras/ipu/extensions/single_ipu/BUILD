@@ -44,20 +44,20 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "correctness_test",
-#     size = "large",
-#     srcs = ["correctness_test.py"],
-#     python_version = "PY3",
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras:combinations",
-#         "//keras/api:keras_api",
-#     ],
-# )
+tf_py_test(
+    name = "correctness_test",
+    size = "large",
+    srcs = ["correctness_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "deferred_sequential_test",
