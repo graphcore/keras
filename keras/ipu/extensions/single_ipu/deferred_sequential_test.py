@@ -14,16 +14,16 @@
 # ==============================================================================
 """Tests specific to deferred-build `Sequential` models."""
 
+import tensorflow.compat.v2 as tf
+
 import os
 import unittest
 import numpy as np
 
-from tensorflow.python import keras
-from tensorflow.python.compat import v2_compat
-
-from tensorflow.python import ipu
+import keras
 from keras import keras_parameterized
 from keras import testing_utils
+from tensorflow.python import ipu
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -33,7 +33,7 @@ except ImportError:
 
 class TestDeferredSequential(keras_parameterized.TestCase):
   def setUp(self):
-    super().setUp()
+    super(TestDeferredSequential, self).setUp()  # pylint: disable=super-with-arguments
     cfg = ipu.config.IPUConfig()
     cfg.auto_select_ipus = 1
     cfg.ipu_model.compile_ipu_code = False
@@ -45,7 +45,7 @@ class TestDeferredSequential(keras_parameterized.TestCase):
 
   def tearDown(self):
     self._ipu_strategy_scope.__exit__(None, None, None)
-    super().tearDown()
+    super(TestDeferredSequential, self).tearDown()  # pylint: disable=super-with-arguments
 
   @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
                                            always_skip_v1=True)
@@ -205,5 +205,5 @@ def get_model():
 
 
 if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
+  tf.compat.v1.enable_v2_behavior()
   tf.test.main()
