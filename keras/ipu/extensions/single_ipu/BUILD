@@ -138,18 +138,18 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "training_test",
-#     size = "large",
-#     srcs = ["training_test.py"],
-#     python_version = "PY3",
-#     shard_count = 20,
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras:combinations",
-#         "//keras/api:keras_api",
-#     ],
-# )
+tf_py_test(
+    name = "training_test",
+    size = "large",
+    srcs = ["training_test.py"],
+    python_version = "PY3",
+    shard_count = 25,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
