@@ -160,6 +160,14 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     del input_shape
     return True
 
+  def _assert_weights_created_delegate(self):
+    assert hasattr(self, "__original_class__")
+    if 'build' in self.__original_class__.__dict__ and not self.built:
+      raise ValueError('Weights for model %s have not yet been created. '
+                       'Weights are created when the Model is first called on '
+                       'inputs or `build()` is called with an `input_shape`.' %
+                       self.name)
+
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _build_delegate(self, input_shape):
     # If we are not in a call context, then build has been called manually.
