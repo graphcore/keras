@@ -16,14 +16,13 @@
 
 import numpy as np
 
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager.def_function import function as tf_function
-from tensorflow.python.ops import array_ops
+import tensorflow.compat.v2 as tf
 
-from tensorflow.python import ipu
+import keras
 from keras import keras_parameterized
 from keras import testing_utils
+
+from tensorflow.python import ipu
 
 
 class TestSequential(keras_parameterized.TestCase):
@@ -44,13 +43,48 @@ class TestSequential(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
                                            always_skip_v1=True)
+  def test_basic_methods(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_dim=2))
+    model.add(keras.layers.Dropout(0.3, name='dp'))
+    model.add(
+        keras.layers.Dense(2,
+                           kernel_regularizer='l2',
+                           kernel_constraint='max_norm'))
+    self.assertEqual(len(model.layers), 3)
+    self.assertEqual(len(model.weights), 2 * 2)
+    self.assertEqual(model.get_layer(name='dp').name, 'dp')
+
+  @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
+                                           always_skip_v1=True)
+  def test_input_defined_first_layer(self):
+    model = keras.models.Sequential()
+    model.add(keras.Input(shape=(2,), name='input_layer'))
+    model.add(keras.layers.Dense(1))
+    model.add(keras.layers.Dropout(0.3, name='dp'))
+    model.add(
+        keras.layers.Dense(2,
+                           kernel_regularizer='l2',
+                           kernel_constraint='max_norm'))
+    self.assertLen(model.layers, 3)
+    self.assertLen(model.weights, 2 * 2)
+    self.assertEqual(model.get_layer(name='dp').name, 'dp')
+
+  @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
+                                           always_skip_v1=True)
+  def test_single_layer_in_init(self):
+    model = keras.models.Sequential(keras.layers.Dense(1))
+    self.assertLen(model.layers, 1)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
+                                           always_skip_v1=True)
   def test_sequential_pop(self):
     batch_size = 5
     num_classes = 2
 
     model = testing_utils.get_small_sequential_mlp(num_classes, num_classes)
     self.assertIsInstance(
-        model, ipu.keras.extensions.sequential_extensions.SequentialExtension)
+        model, keras.ipu.extensions.sequential_extensions.SequentialExtension)
     model.compile(loss='mse', optimizer='rmsprop')
     x = np.random.random((batch_size, num_classes))
     y = np.random.random((batch_size, num_classes))
@@ -117,8 +151,8 @@ class TestSequential(keras_parameterized.TestCase):
       len(model.weights)
     self.assertFalse(model.built)
 
-    x = array_ops.ones((num_samples, input_dim))
-    y = array_ops.zeros((num_samples, num_classes))
+    x = tf.ones((num_samples, input_dim))
+    y = tf.zeros((num_samples, num_classes))
     dataset = tf.data.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10, drop_remainder=True)
@@ -137,8 +171,8 @@ class TestSequential(keras_parameterized.TestCase):
                     metrics=['accuracy'])
       return model
 
-    inputs = array_ops.zeros(shape=(30, 3))
-    targets = array_ops.zeros(shape=(30, 4))
+    inputs = tf.zeros(shape=(30, 3))
+    targets = tf.zeros(shape=(30, 4))
 
     model = get_model()
     model.fit(inputs, targets, epochs=10, steps_per_epoch=30)
@@ -274,7 +308,7 @@ class TestSequential(keras_parameterized.TestCase):
   def test_sequential_deferred_manual_build(self):
     model = testing_utils.get_small_sequential_mlp(4, 5)
     self.assertFalse(model.built)
-    model(array_ops.zeros([1, 2]))
+    model(tf.zeros([1, 2]))
     self.assertTrue(model.built)
     model.compile('rmsprop',
                   loss='mse',
@@ -333,6 +367,85 @@ class TestSequential(keras_parameterized.TestCase):
     model.fit(np.random.random((1, 3)), np.random.random((1, 3)), batch_size=1)
     self.assertTrue(model.built)
 
+  def test_sequential_layer_tracking(self):
+    """Test that Sequential only tracks layers added in init or `.add`."""
+    layer = keras.layers.Dense(1)
+    model = keras.Sequential([layer])
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],  # pylint: disable=protected-access
+        layer)
+
+    model.a = [keras.layers.Dense(3)
+               ]  # should not be added to the layers list.
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],  # pylint: disable=protected-access
+        layer)
+
+    layer2 = keras.layers.Dense(2)
+    model.add(layer2)
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],  # pylint: disable=protected-access
+        layer2)
+
+    model.a = [keras.layers.Dense(3)
+               ]  # should not be added to the layers list.
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],  # pylint: disable=protected-access
+        layer2)
+
+    model.pop()
+    self.assertEqual(
+        list(model._flatten_layers(include_self=False, recursive=False))[-1],  # pylint: disable=protected-access
+        layer)
+
+  def test_config_preserves_input_layer(self):
+    model = keras.Sequential([
+        keras.Input((None,), name='my_embedding_input', dtype='int32'),
+        keras.layers.Embedding(32, 32),
+        keras.layers.Dense(3),
+    ])
+    config = model.get_config()
+    new_model = keras.Sequential.from_config(config)
+    self.assertTrue(new_model.built)
+    layers = list(
+        new_model._flatten_layers(include_self=False, recursive=False))  # pylint: disable=protected-access
+    self.assertEqual(layers[0].dtype, 'int32')
+    self.assertEqual(layers[0].name, 'my_embedding_input')
+
+  def test_name_unicity(self):
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(3, name='specific_name'))
+    with self.assertRaisesRegex(ValueError, 'should have unique names'):
+      model.add(keras.layers.Dense(3, name='specific_name'))
+
+  @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
+                                           always_skip_v1=True)
+  def test_tf_module_call(self):
+    class MyModule(tf.Module):
+      def __init__(self):
+        self.v = tf.Variable(2.)
+
+      def __call__(self, x):
+        return self.v * x
+
+    model = keras.Sequential()
+    model.add(MyModule())
+    model.compile('sgd', 'mse')
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model.fit(x, y, batch_size=2)
+    self.assertLen(model.trainable_variables, 1)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_eager=True,
+                                           always_skip_v1=True)
+  def test_tf_module_error(self):
+    class MyModule(tf.Module):
+      def __init__(self):
+        self.v = tf.Variable(2.)
+
+    model = keras.Sequential()
+    with self.assertRaisesRegex(ValueError, 'is not defined'):
+      model.add(MyModule())
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
   def setUp(self):
@@ -357,7 +470,7 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     class MySequential(keras.Sequential):
       def __init__(self, name=None):
         super().__init__(name=name)
-        self.call = tf_function(self.call)
+        self.call = tf.function(self.call)
 
     model = MySequential()
     model.add(keras.layers.Dense(4, activation='relu'))
