@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@org_keras//keras:keras.bzl", "tf_py_test")
+
 package(
     default_visibility = [
         "//keras:__subpackages__",
@@ -26,20 +28,21 @@ filegroup(
     visibility = ["//keras/google/private_tf_api_test:__pkg__"],
 )
 
-# tf_py_test(
-#     name = "callbacks_test",
-#     size = "large",
-#     srcs = ["callbacks_test.py"],
-#     python_version = "PY3",
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras/api:keras_api",
-#         "//keras:combinations",
-#     ],
-# )
+tf_py_test(
+    name = "callbacks_test",
+    size = "large",
+    srcs = ["callbacks_test.py"],
+    python_version = "PY3",
+    shard_count = 25,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 # tf_py_test(
 #     name = "correctness_test",
@@ -51,8 +54,8 @@ filegroup(
 #         "//:expect_numpy_installed",
 #         "//:expect_tensorflow_installed",
 #         "//keras",
-#         "//keras/api:keras_api",
 #         "//keras:combinations",
+#         "//keras/api:keras_api",
 #     ],
 # )
 
@@ -66,8 +69,8 @@ filegroup(
 #         "//:expect_numpy_installed",
 #         "//:expect_tensorflow_installed",
 #         "//keras",
-#         "//keras/api:keras_api",
 #         "//keras:combinations",
+#         "//keras/api:keras_api",
 #     ],
 # )
 
@@ -81,8 +84,8 @@ filegroup(
 #         "//:expect_numpy_installed",
 #         "//:expect_tensorflow_installed",
 #         "//keras",
-#         "//keras/api:keras_api",
 #         "//keras:combinations",
+#         "//keras/api:keras_api",
 #     ],
 # )
 
@@ -96,8 +99,8 @@ filegroup(
 #         "//:expect_numpy_installed",
 #         "//:expect_tensorflow_installed",
 #         "//keras",
-#         "//keras/api:keras_api",
 #         "//keras:combinations",
+#         "//keras/api:keras_api",
 #     ],
 # )
 
@@ -111,8 +114,8 @@ filegroup(
 #         "//:expect_numpy_installed",
 #         "//:expect_tensorflow_installed",
 #         "//keras",
-#         "//keras/api:keras_api",
 #         "//keras:combinations",
+#         "//keras/api:keras_api",
 #     ],
 # )
 
@@ -126,8 +129,8 @@ filegroup(
 #         "//:expect_numpy_installed",
 #         "//:expect_tensorflow_installed",
 #         "//keras",
-#         "//keras/api:keras_api",
 #         "//keras:combinations",
+#         "//keras/api:keras_api",
 #     ],
 # )
 
@@ -142,7 +145,7 @@ filegroup(
 #         "//:expect_numpy_installed",
 #         "//:expect_tensorflow_installed",
 #         "//keras",
-#         "//keras/api:keras_api",
 #         "//keras:combinations",
+#         "//keras/api:keras_api",
 #     ],
 # )
