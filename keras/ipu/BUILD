@@ -293,3 +293,19 @@ tf_py_test(
         "//keras/api:keras_api",
     ],
 )
+
+tf_py_test(
+    name = "prng_stability_models_test",
+    size = "large",
+    srcs = ["prng_stability_models_test.py"],
+    shard_count = 4,
+    tags = ["hw_poplar_test_4_ipus"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
