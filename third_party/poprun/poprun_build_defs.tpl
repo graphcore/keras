@@ -2,6 +2,27 @@
 
 load("@org_keras//keras:keras.bzl", "tf_py_test")
 
+def mpirun_py_test(
+        name,
+        srcs,
+        main,
+        num_processes = 1,
+        args = [],
+        **kwargs):
+    tf_py_test(
+        name = name,
+        srcs = srcs + [
+            "//third_party/poprun:mpirun_test_wrapper.py",
+        ],
+        main = "mpirun_test_wrapper.py",
+        args = [
+            "{MPIRUN_BINARY}",
+            str(num_processes),
+            "$(location {})".format(main),
+        ] + args,
+        **kwargs
+    )
+
 def poprun_py_test(
         name,
         srcs,

@@ -7,6 +7,7 @@ def _impl(repository_ctx):
         "poprun_build_defs.bzl",
         Label("//third_party/poprun:poprun_build_defs.tpl"),
         {
+            "{MPIRUN_BINARY}": str(repository_ctx.which("mpirun")),
             "{POPRUN_BINARY}": str(repository_ctx.which("poprun")),
             "{PYTHON_INTERPRETER}": str(repository_ctx.which("python")),
         },
