@@ -52,3 +52,8 @@ http_archive(
 
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 protobuf_deps()
+
+# Begin IPU specific changes.
+load("//third_party/poprun:poprun_configure.bzl", "poprun_configure")
+poprun_configure(name="local_poprun_configure")
+# End IPU specific changes.

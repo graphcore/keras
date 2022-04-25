@@ -19,21 +19,18 @@ from absl.testing import parameterized
 import popdist
 import popdist.tensorflow
 
-from tensorflow.python import ipu
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import backprop
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
-from tensorflow.python.ipu.horovod import popdist_strategy
-from tensorflow.python.ipu import horovod as hvd
-from tensorflow.python.ipu.ipu_outfeed_queue import IPUOutfeedQueue
+import tensorflow.compat.v2 as tf
 
-from tensorflow.python.types.core import Tensor
 from keras import layers, losses
 from keras import Model, Input
 from keras.engine import data_adapter
 from keras.optimizer_v2 import gradient_descent
 from keras.callbacks import Callback, History
+from tensorflow.python import ipu
+from tensorflow.python.ipu.horovod import popdist_strategy
+from tensorflow.python.ipu import horovod as hvd
+from tensorflow.python.ipu.ipu_outfeed_queue import IPUOutfeedQueue
+from tensorflow.python.framework import test_util as tf_test_util
 
 
 def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
@@ -48,8 +45,8 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
   Returns:
       Dataset: The generated dataset.
   """
-  constant_d = constant_op.constant(x_val, shape=[32])
-  constant_l = constant_op.constant(y_val, shape=[1])
+  constant_d = tf.constant(x_val, shape=[32])
+  constant_l = tf.constant(y_val, shape=[1])
 
   ds = tf.data.Dataset.from_tensors((constant_d, constant_l))
   ds = ds.repeat(length)
@@ -77,7 +74,7 @@ def simple_model():
       data = data_adapter.expand_1d(data)
       x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
 
-      with backprop.GradientTape() as tape:
+      with tf.GradientTape() as tape:
         y_pred = self(x, training=True)
         loss = self.compiled_loss(y,
                                   y_pred,
@@ -103,7 +100,7 @@ def simple_model():
   random_seed = 1234
 
   np.random.seed(random_seed)
-  test_util.random_seed.set_seed(random_seed)
+  tf_test_util.random_seed.set_seed(random_seed)
 
   inputs = Input(shape=(32,))
   outputs = layers.Dense(1)(inputs)
@@ -137,7 +134,7 @@ def run_with_popdist(fn):
 
     result = fn(model)
 
-  if isinstance(result, Tensor):
+  if isinstance(result, tf.Tensor):
     return model, (
         result,
         hvd.allgather(result),
@@ -165,7 +162,7 @@ def run_with_horovod(fn):
 
   result = fn(model)
 
-  if isinstance(result, Tensor):
+  if isinstance(result, tf.Tensor):
     return model, (
         result,
         hvd.allgather(result),
@@ -320,7 +317,7 @@ class KerasPoprunTest(tf.test.TestCase, parameterized.TestCase):
 
     # Ensure that the return value is equal.
     if isinstance(result_1, (
-        Tensor,
+        tf.Tensor,
         np.ndarray,
     )):
       self.assertAllClose(result_1, result_2)

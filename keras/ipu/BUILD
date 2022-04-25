@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@org_keras//keras:keras.bzl", "tf_py_test")
+load("@local_poprun_configure//:poprun_build_defs.bzl", "poprun_py_test")
 
 package(
     default_visibility = [
@@ -300,6 +301,40 @@ tf_py_test(
     srcs = ["prng_stability_models_test.py"],
     shard_count = 4,
     tags = ["hw_poplar_test_4_ipus"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
+
+poprun_py_test(
+    name = "poprun_test",
+    size = "large",
+    srcs = ["poprun_test.py"],
+    main = "poprun_test.py",
+    num_instances = 2,
+    num_replicas = 2,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
+
+poprun_py_test(
+    name = "distributed_test",
+    size = "large",
+    srcs = ["distributed_test.py"],
+    main = "distributed_test.py",
+    num_instances = 2,
+    num_replicas = 8,
     deps = [
         "//:expect_absl_installed",
         "//:expect_numpy_installed",
