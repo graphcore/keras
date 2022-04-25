@@ -51,6 +51,7 @@ from keras.engine import training as training_module
 from keras.engine import training_utils
 from keras.engine import data_adapter
 from keras.layers import BatchNormalization
+from keras.optimizer_v2 import optimizer_v2
 from keras.utils import tf_inspect
 from keras.utils import tf_utils
 from keras.utils import version_utils
@@ -113,6 +114,42 @@ class _Mode(enum.Enum):
   FIT = 1
   EVALUATE = 2
   PREDICT = 3
+
+
+def _sanity_check_optimizer(opt):  #pylint: disable=missing-type-doc,missing-param-doc
+  '''
+  If the user has provided their own optimizer (i.e. its parent isn't
+  OptimizerV2, but OptimizerV2 is an ancestor), then ensure they haven't
+  overridden its minimize API.
+  '''
+  if not isinstance(opt, optimizer_v2.OptimizerV2):
+    return
+
+  # Method resolution order.
+  mro = opt.__class__.__mro__
+
+  valid = False
+
+  # Simple case, directly inherited from OptimizerV2. This is very likely
+  # a TF built-in optimizer and not something user-baked, so, we need to
+  # allow the overridden minimize in this case.
+  if len(mro) == 2 and mro[1] == optimizer_v2.OptimizerV2:
+    valid = True
+
+  # There is more of a hierarchy in this case, so we need to verify that
+  # the minimize method of the given optimizer matches that of its parent.
+  # We can't step through each level in the inheritance hierarchy as there
+  # will be cases in which the user inherits from a built in optimizer that
+  # itself overrides minimize (such as SGD for example). So if we enforce
+  # the following constraint on each, then every time one uses such an
+  # optimizer an exception will occur.
+  if len(mro) > 2:
+    valid = mro[0].minimize == mro[1].minimize
+
+  if not valid:
+    raise ValueError(
+        "When using Gradient Accumulation or Pipelining, the provided "
+        "optimizer must not override OptimizerV2.minimize.")
 
 
 class KerasExtensionBase(base_layer.KerasExtension):
@@ -458,6 +495,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
   def _make_single_ipu_train_function_with_gradient_accumulation(
       self, gradient_accumulation_steps_per_replica):
+    _sanity_check_optimizer(self.optimizer)
 
     optimizer = _KerasOptimizerWrapper(self, self.optimizer)
 
@@ -526,6 +564,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
                      gradient_accumulation_steps_per_replica,
                      add_loss=False,
                      add_optimizer=False):
+    _sanity_check_optimizer(self.optimizer)
+
     training = add_loss and add_optimizer
     self._logged_bn_warning = False
 
