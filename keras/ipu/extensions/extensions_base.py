@@ -29,6 +29,7 @@ import popdist
 import tensorflow.compat.v2 as tf
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager.def_function import function as tf_function
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.ipu import ipu_infeed_queue
@@ -36,6 +37,7 @@ from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu.ops import pipelining_ops
 from tensorflow.python.ipu import gradient_accumulation as ga
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
+from tensorflow.python.ipu import serving
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer
 
@@ -56,6 +58,7 @@ from keras.utils import tf_inspect
 from keras.utils import tf_utils
 from keras.utils import version_utils
 from keras.saving.saved_model import utils
+from keras.saving import saving_utils
 from keras import optimizer_v1
 
 logged_steps_per_execution_warning = False
@@ -1858,3 +1861,59 @@ class KerasExtensionBase(base_layer.KerasExtension):
   def _make_predict_function_overridden(self):
     return (self.make_predict_function.__func__ !=
             training_module.Model.make_predict_function)
+
+  def _get_call_signature(self):
+    input_signature = None
+    if isinstance(self.call, def_function.Function):
+      input_signature = self.call.input_signature
+    if input_signature is None:
+      input_signature = saving_utils.model_call_inputs(
+          self, keep_original_batch_size=True)
+    if input_signature is None:
+      raise RuntimeError(
+          'Cannot get model\'s input signature. Please specify the input shape '
+          'using `model.build()` or invoke your model using real data.')
+
+    input_signature = tf.nest.flatten(input_signature)
+    if any(None in input.shape for input in input_signature):
+      raise ValueError('Not all dimensions of inputs can be determined. '
+                       'Please specify batch size in model\'s input layer.')
+    return input_signature
+
+  def _wrap_model_call_for_serving(self, input_signature):
+    iterations = tf.constant(self._steps_per_execution, dtype=tf.int32)
+
+    @tf_function(input_signature=input_signature)
+    def predict_step(*args):
+      return self.__call__(args)
+
+    return serving._wrap_in_loop(  # pylint: disable=protected-access
+        predict_step, input_signature, None, iterations)
+
+  def export_for_ipu_serving(self, export_dir):
+    """Export Keras model using the SavedModel format for TensorFlow serving.
+
+    Wrap model's ``call`` function inside a ``while`` loop, add an infeed for
+    the inputs and an outfeed for the outputs, convert any variables into
+    constants and write a SavedModel containing an IPU runtime function and
+    Poplar executable.
+
+    Args:
+      export_dir (str): The path to the directory where the SavedModel will be
+        written.
+
+    Returns:
+      tf.function: A reference to the same predict function that was exported
+      using the SavedModel format. This function uses the embedded runtime op to
+      run the executable that was included in the SavedModel's ``assets``
+      subfolder.
+
+    Raises:
+      ValueError: If model is pipelined.
+    """
+    if self._is_pipelined():
+      raise ValueError("Exporting pipelined Keras models is not supported.")
+
+    input_signature = self._get_call_signature()
+    defunc = self._wrap_model_call_for_serving(input_signature)
+    return serving._export_saved_model(defunc, export_dir, input_signature)  # pylint: disable=protected-access

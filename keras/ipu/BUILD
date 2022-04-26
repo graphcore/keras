@@ -359,3 +359,18 @@ mpirun_py_test(
         "//keras/api:keras_api",
     ],
 )
+
+tf_py_test(
+    name = "serving_export_test",
+    size = "large",
+    srcs = ["serving_export_test.py"],
+    tags = ["hw_poplar_test_1_ipus"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
