@@ -193,6 +193,132 @@ class ExportForServingTest(TestServingExportBase):
       with self.assertRaisesRegex(ValueError, "IPU strategy"):
         ipu.serving.export_keras(model, tmp_folder)
 
+  @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_pipelined_sequential_one_input(self):
+    self.use_ipus(2)
+    bs = tf.constant(2, dtype=tf.int32)
+    input_shape = (bs, 3, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Conv1D(
+              filters=2,
+              kernel_size=2,
+              kernel_initializer=keras.initializers.Constant(value=3)))
+      model.add(keras.layers.Activation('relu'))
+
+      model.set_pipeline_stage_assignment([0, 1])
+      model.set_pipelining_options(device_mapping=[0, 1])
+      model.build(input_shape)
+      model.compile(steps_per_execution=16)
+
+    input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
+                      dtype=np.float32)
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      ipu.serving.export_keras(model, tmp_folder)
+      result = self._load_and_run(tmp_folder, input1)
+      result = np.array(result)
+      ref_result = np.array(
+          [[[3.0, 3.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]],
+          dtype=np.float32)
+      self.assertTrue(np.array_equal(result, ref_result))
+
+  @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_pipelined_functional_two_inputs(self):
+    self.use_ipus(2)
+    bs = tf.constant(2, dtype=tf.int32)
+    input1_shape = (bs, 3, 1)
+    input2_shape = (bs, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      input1 = keras.layers.Input(shape=input1_shape[1:],
+                                  name='x1',
+                                  batch_size=bs)
+      input2 = keras.layers.Input(shape=input2_shape[1:],
+                                  name='x2',
+                                  batch_size=bs)
+
+      with keras.ipu.PipelineStage(0):
+        x = keras.layers.Conv1D(
+            filters=2,
+            kernel_size=2,
+            kernel_initializer=keras.initializers.Constant(value=3))(input1)
+
+      with keras.ipu.PipelineStage(1):
+        x = keras.layers.Add()([x, input2])
+        x = keras.layers.Activation('relu')(x)
+
+      model = keras.Model(inputs=(input1, input2), outputs=x)
+
+      model.set_pipelining_options(device_mapping=[0, 1])
+
+      model.build((input1_shape, input2_shape))
+      model.compile(steps_per_execution=16)
+
+    input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
+                      dtype=np.float32)
+    input2 = np.array([[2.0], [4.0]], dtype=np.float32)
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      ipu.serving.export_keras(model, tmp_folder)
+      result = self._load_and_run(tmp_folder, {'x1': input1, 'x2': input2})
+      result = np.array(result)
+      ref_result = np.array(
+          [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
+          dtype=np.float32)
+      self.assertTrue(np.array_equal(result, ref_result))
+
+  @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_pipelined_subclass_model_two_inputs(self):
+    self.use_ipus(2)
+    bs = tf.constant(2, dtype=tf.int32)
+    input1_shape = (bs, 3, 1)
+    input2_shape = (bs, 1)
+
+    class SimpleModel(keras.Model):  # pylint: disable=abstract-method
+      def __init__(self):
+        super().__init__()
+        self.conv = keras.layers.Conv1D(
+            filters=2,
+            kernel_size=2,
+            kernel_initializer=keras.initializers.Constant(value=3))
+        self.relu = keras.layers.Activation('relu')
+        self.add = keras.layers.Add()
+
+      def call(self, inputs):  # pylint: disable=arguments-differ
+        with keras.ipu.PipelineStage(0):
+          x, y = inputs[0], inputs[1]
+          x = self.conv(x)
+
+        with keras.ipu.PipelineStage(1):
+          x = self.add([x, y])
+          x = self.relu(x)
+        return x
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      model = SimpleModel()
+      model.build([input1_shape, input2_shape])
+      model.set_pipelining_options(device_mapping=[0, 1])
+      model.compile(steps_per_execution=16)
+
+    input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
+                      dtype=np.float32)
+    input2 = np.array([[2.0], [4.0]], dtype=np.float32)
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      ipu.serving.export_keras(model, tmp_folder)
+      result = self._load_and_run(tmp_folder, [input1, input2])
+      result = np.array(result)
+      ref_result = np.array(
+          [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
+          dtype=np.float32)
+      self.assertTrue(np.array_equal(result, ref_result))
+
 
 if __name__ == '__main__':
   tf.test.main()

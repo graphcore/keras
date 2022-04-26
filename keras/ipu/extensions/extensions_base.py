@@ -1883,12 +1883,32 @@ class KerasExtensionBase(base_layer.KerasExtension):
   def _wrap_model_call_for_serving(self, input_signature):
     iterations = tf.constant(self._steps_per_execution, dtype=tf.int32)
 
-    @tf_function(input_signature=input_signature)
-    def predict_step(*args):
-      return self.__call__(args)
+    if self._is_pipelined():
+      inputs = {
+          idx: tf.zeros(s.shape, s.dtype)
+          for idx, s in enumerate(input_signature)
+      }
+      input_dataset = tf.data.Dataset.from_tensors(inputs).repeat()
+      iterator = self._infeed_manager.get_infeed(_Mode.PREDICT, input_dataset,
+                                                 self._infeed_kwargs)
+      outfeed = self._outfeed_manager.get_outfeed(_Mode.PREDICT,
+                                                  self._outfeed_kwargs)
 
-    return serving._wrap_in_loop(  # pylint: disable=protected-access
-        predict_step, input_signature, None, iterations)
+      predict_fn = self._make_pipeline_ipu_predict_function(iterations)
+
+      @tf_function
+      def defunc():
+        predict_fn(None, iterator, outfeed)
+    else:
+
+      @tf_function(input_signature=input_signature)
+      def predict_step(*args):
+        return self.__call__(args)
+
+      defunc = serving._wrap_in_loop(  # pylint: disable=protected-access
+          predict_step, input_signature, None, iterations)
+
+    return defunc
 
   def export_for_ipu_serving(self, export_dir):
     """Export Keras model using the SavedModel format for TensorFlow serving.
@@ -1907,13 +1927,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
       using the SavedModel format. This function uses the embedded runtime op to
       run the executable that was included in the SavedModel's ``assets``
       subfolder.
-
-    Raises:
-      ValueError: If model is pipelined.
     """
-    if self._is_pipelined():
-      raise ValueError("Exporting pipelined Keras models is not supported.")
-
     input_signature = self._get_call_signature()
     defunc = self._wrap_model_call_for_serving(input_signature)
     return serving._export_saved_model(defunc, export_dir, input_signature)  # pylint: disable=protected-access
