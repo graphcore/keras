@@ -14,6 +14,7 @@
 # ==============================================================================
 """Test for IPU Keras single IPU model."""
 
+import os
 import tempfile
 import numpy as np
 
@@ -192,6 +193,24 @@ class ExportForServingTest(TestServingExportBase):
     with tempfile.TemporaryDirectory() as tmp_folder:
       with self.assertRaisesRegex(ValueError, "IPU strategy"):
         ipu.serving.export_keras(model, tmp_folder)
+
+  @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=True)
+  @testing_utils.run_v2_only
+  def test_export_keras_fails_for_non_empty_dir(self):
+    input_shape = (1,)
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Activation('relu'))
+      model.build(input_shape)
+      model.compile(steps_per_execution=16)
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      open(os.path.join(tmp_folder, 'dummy_file'), 'w').close()
+      with self.assertRaisesRegex(ValueError, "is not empty"):
+        ipu.serving.export_keras(model, tmp_folder)
+      with self.assertRaisesRegex(ValueError, "is not empty"):
+        model.export_for_ipu_serving(tmp_folder)
 
   @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
   @testing_utils.run_v2_only
