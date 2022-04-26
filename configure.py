@@ -120,7 +120,7 @@ def generate_install_pip_package_commands(args):
   commands = ["pip3 install --upgrade setuptools wheel"]
 
   # Load the requirements file and ignore tf-nightly.
-  requirements_file = 'requirements.txt'
+  requirements_file = os.path.join(THIS_DIR, "requirements.txt")
   if not os.path.exists(requirements_file):
     exit_with_error(f"Cannot locate {requirements_file}")
 
