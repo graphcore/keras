@@ -25,3 +25,87 @@ filegroup(
     srcs = glob(["*.py"]),
     visibility = ["//keras/google/private_tf_api_test:__pkg__"],
 )
+
+py_test(
+    name = "example1",
+    size = "large",
+    srcs = ["example1.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example2",
+    size = "large",
+    srcs = ["example2.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example3",
+    size = "large",
+    srcs = ["example3.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example4",
+    size = "large",
+    srcs = ["example4.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example5",
+    size = "large",
+    srcs = ["example5.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example6",
+    size = "large",
+    srcs = ["example6.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example7",
+    size = "large",
+    srcs = ["example7.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example8",
+    size = "large",
+    srcs = ["example8.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example9",
+    size = "large",
+    srcs = ["example9.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example10",
+    size = "large",
+    srcs = ["example10.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example11",
+    size = "large",
+    srcs = ["example11.py"],
+    deps = ["//keras"],
+)
+
+py_test(
+    name = "example12",
+    size = "large",
+    srcs = ["example12.py"],
+    deps = ["//keras"],
+)
