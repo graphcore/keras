@@ -216,8 +216,8 @@ def write_user_bazelrc(args, environment):
         user_bazelrc.write(f"build --disk_cache='{args.disk_cache}'\n")
 
       # Restore the user defined options.
-      separation = "### ADD USER DEFINED OPTIONS AFTER THIS LINE ONLY ###"
-      user_bazelrc.write(f"{separation}\n")
+      separation = "### ADD USER DEFINED OPTIONS AFTER THIS LINE ONLY ###\n"
+      user_bazelrc.write(separation)
       if use_backup:
         with open(backup_user_bazelrc_path, "r") as backup_user_bazelrc:
           text = backup_user_bazelrc.read()
