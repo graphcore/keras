@@ -34,6 +34,9 @@ PIP_EXCLUDED_DIRS = frozenset([
     'keras/benchmarks',
     'keras/integration_tests',
     'keras/tests',
+    # Begin IPU specific changes.
+    'keras/ipu/docs',
+    # Enf IPU specific changes.
 ])
 
 # Directories that should not have __init__.py files generated within them.
