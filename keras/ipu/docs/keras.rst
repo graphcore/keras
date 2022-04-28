@@ -119,44 +119,12 @@ By default, these pipeline stages will be executed using the grouped schedule
 together on each IPU. All IPUs alternate between executing a forward pass and then a
 backward pass.
 
-.. figure:: figures/grouped_pipeline.png
-    :width: 95%
-    :alt: Grouped pipeline schedule illustration
-    :align: center
-    :name: fig-grouped-pipeline
-
-    Grouped schedule
-
 Two other schedules are available and can be configured as shown in
 :numref:`pipelining-options`. When using the interleaved schedule
 (:numref:`fig-interleaved-pipeline`) the forward and backward passes are
 interleaved (which requires less memory but is likely to be slower). The
 sequential schedule (:numref:`fig-sequential-pipeline`) executes one stage at a
 time and may be useful when debugging your model.
-
-.. figure:: figures/interleaved_pipeline.png
-    :width: 95%
-    :alt: Interleaved pipeline schedule illustration
-    :align: center
-    :name: fig-interleaved-pipeline
-
-    Interleaved schedule
-
-.. figure:: figures/sequential_pipeline.png
-    :width: 95%
-    :alt: Sequential pipeline schedule illustration
-    :align: center
-    :name: fig-sequential-pipeline
-
-    Sequential schedule
-
-.. note::
-
-  In :numref:`fig-grouped-pipeline`, :numref:`fig-interleaved-pipeline`
-  and :numref:`fig-sequential-pipeline`, `T` refers to the number of gradient accumulation
-  steps per replica. See :numref:`pipelining-options` for how to
-  specify this value.
-
 
 A detailed explanation of pipelining can be found in the technical note on `Model parallelism with
 TensorFlow: sharding and pipelining <https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html>`_.
