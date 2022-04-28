@@ -25,7 +25,7 @@ from keras.optimizer_v2 import gradient_descent
 from keras.optimizer_v2 import optimizer_v2
 from keras.datasets import imdb
 from keras.datasets import mnist
-from keras.layers import preprocessing
+from keras.layers.preprocessing import normalization
 from tensorflow.python import ipu
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python.client import session
@@ -415,7 +415,7 @@ class PrngStabilityModelsKerasTest(tf.test.TestCase):
       horsepower = np.random.rand(320, 1).astype(np.float32)
       mpg = np.random.rand(320, 1).astype(np.float32)
 
-      normalizer = preprocessing.Normalization(input_shape=[
+      normalizer = normalization.Normalization(input_shape=[
           1,
       ], axis=None)
 
