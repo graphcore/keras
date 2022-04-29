@@ -19,6 +19,7 @@ import subprocess
 import shutil
 import sys
 import tempfile
+import distro
 
 THIS_DIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
 
@@ -163,7 +164,7 @@ def parse_env_vars(env_vars):
 def run_and_get_environment(commands):
   supressed_commands = (f"{command} 1>/dev/null" for command in commands)
   combined_commands = " && ".join(supressed_commands)
-  get_env_command = ["env", "-i", "bash", "-c", f"{combined_commands} && env"]
+  get_env_command = ["bash", "-c", f"{combined_commands} && env"]
 
   print("Generating build environment with commands:")
   for command in commands:
@@ -205,6 +206,12 @@ def write_user_bazelrc(args, environment):
       user_bazelrc.write(f"build --action_env=PATH='{environment['PATH']}'\n")
       user_bazelrc.write(f"build --action_env=LD_LIBRARY_PATH='{environment['LD_LIBRARY_PATH']}'\n")  # yapf: disable
       user_bazelrc.write(f"build --action_env=PYTHONPATH='{environment['PYTHONPATH']}'\n")  # yapf: disable
+
+      # Centos 7 fix for compilation of protobuf.
+      dist_tuple = distro.linux_distribution()
+      assert len(dist_tuple) == 3
+      if dist_tuple[0].lower().startswith('centos') and dist_tuple[1].startswith('7'):  # yapf: disable
+        user_bazelrc.write("build --action_env=BAZEL_LINKLIBS=-lstdc++\n")  # yapf: disable
 
       if "TMPDIR" in environment:
         user_bazelrc.write(f"build --action_env=TMPDIR='{environment['TMPDIR']}'\n")  # yapf: disable
