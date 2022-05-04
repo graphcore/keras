@@ -23,6 +23,8 @@ inside the scope of an ``IPUStrategy``:
   :linenos:
   :emphasize-lines: 2, 7-10, 39-40
 
+.. _using-steps-per-execution:
+
 Using steps_per_execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
