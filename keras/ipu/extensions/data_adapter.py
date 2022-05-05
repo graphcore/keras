@@ -166,10 +166,11 @@ class IPUDataHandler(data_adapter.DataHandler):
                 len(self._dataset), self._replication_factor,
                 steps_per_replica,
                 steps_per_replica * self._replication_factor))
-      if self.inferred_steps % self._steps_per_execution != 0:
+      if self.inferred_steps % self.steps_per_execution_value != 0:
         raise ValueError(
-            "`steps_per_execution` must be a divisor of the number of batches "
-            "in the dataset provided{}.".format(
+            "`steps_per_execution` ({}) must be a divisor of the number of "
+            "batches ({}) in the dataset provided{}.".format(
+                self.steps_per_execution_value, self.inferred_steps,
                 " to this replica" if self._replication_factor > 1 else ""))
 
   def _infer_steps(self, steps, dataset):

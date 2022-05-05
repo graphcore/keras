@@ -284,8 +284,8 @@ class DataHandlerTest(keras_parameterized.TestCase):
     x = tf.data.Dataset.from_tensor_slices(x).batch(2, drop_remainder=True)
     with self.assertRaisesRegex(
         ValueError,
-        r"`steps_per_execution` must be a divisor of the number of batches in "
-        r"the dataset provided."):
+        r"`steps_per_execution` \(\d+\) must be a divisor of the number of "
+        r"batches \(\d+\) in the dataset provided."):
       data_handler = data_adapter.IPUDataHandler(
           x, epochs=1, batch_size=2, steps_per_execution=tf.Variable(3))
       del data_handler
