@@ -29,7 +29,6 @@ from tensorflow.python.eager import test
 import keras
 from keras import backend
 from keras import testing_utils
-from keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 
 
 def simple_model(layer_sizes, layer_stages, w=None, pipeline=False):
@@ -907,41 +906,6 @@ class IPUPipelineTest(tf.test.TestCase, parameterized.TestCase):
                                                      bn_momentum)
       self.assertNotEqual(moving_mean, exp_mean)
       self.assertNotEqual(moving_var, exp_var)
-
-  @testing_utils.run_v2_only
-  def testNoOverrideMinimizeWithPipelining(self):
-    class BadSGD(gradient_descent_v2.SGD):
-      def __init__(self, lr):  # pylint: disable=useless-super-delegation
-        super().__init__(lr)
-
-      def minimize(self, loss, var_list, grad_loss=None, name=None, tape=None):  # pylint: disable=unused-argument
-        return 0
-
-    cfg = ipu.config.IPUConfig()
-    cfg.auto_select_ipus = 2
-    tu.add_hw_ci_connection_options(cfg)
-    cfg.configure_ipu_system()
-
-    strategy = ipu.ipu_strategy.IPUStrategy()
-    with strategy.scope():
-      input_layer = keras.layers.Input(1)
-
-      with keras.ipu.PipelineStage(0):
-        x = keras.layers.Dense(1)(input_layer)
-
-      with keras.ipu.PipelineStage(1):
-        x = keras.layers.Dense(1)(x)
-
-      l = keras.losses.MeanSquaredError(reduction="sum")
-
-      m = keras.Model(inputs=input_layer, outputs=x)
-      m.compile(loss=l, optimizer=BadSGD(0.1), steps_per_execution=2)
-      m.set_pipelining_options(gradient_accumulation_steps_per_replica=2)
-
-      with self.assertRaisesRegex(ValueError,
-                                  "must not override OptimizerV2.minimize"):
-        data = [np.ones((64, 1), dtype=np.float16)] * 2
-        _ = m.fit(*data, epochs=1, verbose=False)
 
 
 if __name__ == '__main__':

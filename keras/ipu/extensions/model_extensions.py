@@ -378,10 +378,6 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     The value of `gradient_accumulation_steps_per_replica` has no effect when
     using `evaluate()` or `predict()`.
 
-    Note that the `minimize` API of the provided optimizer will not be called
-    when gradient accumulation is enabled. As such, overriding `minimize` in
-    a custom optimizer will cause a `ValueError` to be raised.
-
     Args:
       gradient_accumulation_steps_per_replica: An integer which indicates the
         number of steps the gradients will be accumulated for in each replica.
@@ -447,10 +443,6 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
 
     The value of `gradient_accumulation_steps_per_replica` has no effect when
     using `evaluate()` or `predict()`.
-
-    Note that the `minimize` API of the provided optimizer will not be called
-    when pipelining is enabled. As such, overriding `minimize` in a custom
-    optimizer will cause a `ValueError` to be raised.
 
     Args:
       gradient_accumulation_steps_per_replica: An integer which indicates the
