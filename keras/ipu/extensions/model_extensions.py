@@ -187,12 +187,24 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
       # Helps with complexity introduced by accepting both standard shapes, and
       # keras.Input tensors.
       if isinstance(input_shape, (list, tuple)):
-        if all(d is None or isinstance(d, int) for d in input_shape):
+        if all(d is None or isinstance(d, (int, tf.compat.v1.Dimension))
+               for d in input_shape):
           return f(input_shape)
         return [f(shape) for shape in input_shape]
       if isinstance(input_shape, dict):
         return {k: f(shape) for k, shape in input_shape.items()}
       return f(input_shape)
+
+    def check_shape(x):
+      valid_types = (tuple, list, tf.TensorShape, dict)
+      if not isinstance(x, valid_types):
+        raise ValueError(
+            'Specified input shape is not one of the valid types. '
+            'Please specify a batch input shape of type tuple or '
+            'list of input shapes. User provided '
+            'input type: {}'.format(type(x)))
+
+    map_shapes(input_shape, check_shape)
 
     def get_shape(x):
       if hasattr(x, '_keras_history') and isinstance(
@@ -560,7 +572,14 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
           input_shape = get_shape(inputs)
 
         self.build(input_shape)
-      return self.call(inputs, **kwargs)
+      try:
+        return self.call(inputs, **kwargs)
+      except (tf.errors.InvalidArgumentError, TypeError) as _error:
+        raise ValueError('You cannot build your model by calling `build` '
+                         'if your layers do not support float type inputs. '
+                         'Instead, in order to instantiate and build your '
+                         'model, `call` your model on real tensor data (of '
+                         'the correct dtype).') from _error
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _update_graph_network(self, inputs, outputs):
