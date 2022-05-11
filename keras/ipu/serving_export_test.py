@@ -67,7 +67,9 @@ class ExportForServingTest(TestServingExportBase):
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
   def test_export_keras_sequential_one_input(self):
-    input_shape = (1, 3, 1)
+    # Build model with batch size 4
+    initial_bs = tf.constant(4, dtype=tf.int32)
+    input_shape = (initial_bs, 3, 1)
 
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
@@ -82,9 +84,12 @@ class ExportForServingTest(TestServingExportBase):
       model.build(input_shape)
       model.compile(steps_per_execution=16)
 
+    # Export and test model with batch size 1
+    export_bs = tf.constant(1, dtype=tf.int32)
     input_data = np.array([[[-1.0], [2.0], [-3.0]]], dtype=np.float32)
+
     with tempfile.TemporaryDirectory() as tmp_folder:
-      runtime_func = ipu.serving.export_keras(model, tmp_folder)
+      runtime_func = ipu.serving.export_keras(model, tmp_folder, export_bs)
       # Test runtime function
       with strategy.scope():
         runtime_result = strategy.run(runtime_func,
@@ -101,18 +106,19 @@ class ExportForServingTest(TestServingExportBase):
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
   def test_export_keras_functional_two_inputs(self):
-    bs = tf.constant(1, dtype=tf.int32)
-    input1_shape = (bs, 3, 1)
-    input2_shape = (bs, 1)
+    # Build model with batch size 4
+    initial_bs = tf.constant(4, dtype=tf.int32)
+    input1_shape = (initial_bs, 3, 1)
+    input2_shape = (initial_bs, 1)
 
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
       input1 = keras.layers.Input(shape=input1_shape[1:],
                                   name='x1',
-                                  batch_size=bs)
+                                  batch_size=initial_bs)
       input2 = keras.layers.Input(shape=input2_shape[1:],
                                   name='x2',
-                                  batch_size=bs)
+                                  batch_size=initial_bs)
       x = keras.layers.Conv1D(
           filters=2,
           kernel_size=2,
@@ -124,11 +130,13 @@ class ExportForServingTest(TestServingExportBase):
       model.build([input1_shape, input2_shape])
       model.compile(steps_per_execution=16)
 
+    # Export and test model with batch size 1
+    export_bs = tf.constant(1, dtype=tf.int32)
     input1 = np.array([[[-1.0], [2.0], [-3.0]]], dtype=np.float32)
     input2 = np.array([[2.0]], dtype=np.float32)
 
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder)
+      ipu.serving.export_keras(model, tmp_folder, export_bs)
       result = self._load_and_run(tmp_folder, {'x1': input1, 'x2': input2})
       result = np.array(result)
       ref_result = np.array([[[5.0, 5.0], [0.0, 0.0]]], dtype=np.float32)
@@ -137,9 +145,10 @@ class ExportForServingTest(TestServingExportBase):
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
   def test_export_keras_subclass_model_two_inputs(self):
-    bs = tf.constant(2, dtype=tf.int32)
-    input1_shape = (bs, 3, 1)
-    input2_shape = (bs, 1)
+    # Build model with batch size 8
+    initial_bs = tf.constant(8, dtype=tf.int32)
+    input1_shape = (initial_bs, 3, 1)
+    input2_shape = (initial_bs, 1)
 
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -165,12 +174,14 @@ class ExportForServingTest(TestServingExportBase):
       model.build([input1_shape, input2_shape])
       model.compile(steps_per_execution=16)
 
-      input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
-                        dtype=np.float32)
-      input2 = np.array([[2.0], [4.0]], dtype=np.float32)
+    # Export and test model with batch size 2
+    export_bs = tf.constant(2, dtype=tf.int32)
+    input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
+                      dtype=np.float32)
+    input2 = np.array([[2.0], [4.0]], dtype=np.float32)
 
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder)
+      ipu.serving.export_keras(model, tmp_folder, export_bs)
       result = self._load_and_run(tmp_folder, {
           'input_1': input1,
           'input_2': input2
@@ -216,8 +227,9 @@ class ExportForServingTest(TestServingExportBase):
   @testing_utils.run_v2_only
   def test_export_keras_pipelined_sequential_one_input(self):
     self.use_ipus(2)
-    bs = tf.constant(2, dtype=tf.int32)
-    input_shape = (bs, 3, 1)
+    # Build model with batch size 5
+    intial_bs = tf.constant(5, dtype=tf.int32)
+    input_shape = (intial_bs, 3, 1)
 
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -234,10 +246,13 @@ class ExportForServingTest(TestServingExportBase):
       model.build(input_shape)
       model.compile(steps_per_execution=16)
 
+    # Export and test model with batch size 2
+    export_bs = tf.constant(2, dtype=tf.int32)
     input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
                       dtype=np.float32)
+
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder)
+      ipu.serving.export_keras(model, tmp_folder, export_bs)
       result = self._load_and_run(tmp_folder, input1)
       result = np.array(result)
       ref_result = np.array(
@@ -249,18 +264,19 @@ class ExportForServingTest(TestServingExportBase):
   @testing_utils.run_v2_only
   def test_export_keras_pipelined_functional_two_inputs(self):
     self.use_ipus(2)
-    bs = tf.constant(2, dtype=tf.int32)
-    input1_shape = (bs, 3, 1)
-    input2_shape = (bs, 1)
+    # Build model with batch size 8
+    initial_bs = tf.constant(8, dtype=tf.int32)
+    input1_shape = (initial_bs, 3, 1)
+    input2_shape = (initial_bs, 1)
 
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
       input1 = keras.layers.Input(shape=input1_shape[1:],
                                   name='x1',
-                                  batch_size=bs)
+                                  batch_size=initial_bs)
       input2 = keras.layers.Input(shape=input2_shape[1:],
                                   name='x2',
-                                  batch_size=bs)
+                                  batch_size=initial_bs)
 
       with keras.ipu.PipelineStage(0):
         x = keras.layers.Conv1D(
@@ -279,11 +295,14 @@ class ExportForServingTest(TestServingExportBase):
       model.build((input1_shape, input2_shape))
       model.compile(steps_per_execution=16)
 
+    # Export and test model with batch size 2
+    export_bs = tf.constant(2, dtype=tf.int32)
     input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
                       dtype=np.float32)
     input2 = np.array([[2.0], [4.0]], dtype=np.float32)
+
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder)
+      ipu.serving.export_keras(model, tmp_folder, export_bs)
       result = self._load_and_run(tmp_folder, {'x1': input1, 'x2': input2})
       result = np.array(result)
       ref_result = np.array(
@@ -295,9 +314,10 @@ class ExportForServingTest(TestServingExportBase):
   @testing_utils.run_v2_only
   def test_export_keras_pipelined_subclass_model_two_inputs(self):
     self.use_ipus(2)
-    bs = tf.constant(2, dtype=tf.int32)
-    input1_shape = (bs, 3, 1)
-    input2_shape = (bs, 1)
+    # Build model with batch size 1
+    initial_bs = tf.constant(1, dtype=tf.int32)
+    input1_shape = (initial_bs, 3, 1)
+    input2_shape = (initial_bs, 1)
 
     class SimpleModel(keras.Model):  # pylint: disable=abstract-method
       def __init__(self):
@@ -326,11 +346,13 @@ class ExportForServingTest(TestServingExportBase):
       model.set_pipelining_options(device_mapping=[0, 1])
       model.compile(steps_per_execution=16)
 
+    # Export and test model with batch size 2
+    export_bs = tf.constant(2, dtype=tf.int32)
     input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
                       dtype=np.float32)
     input2 = np.array([[2.0], [4.0]], dtype=np.float32)
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder)
+      ipu.serving.export_keras(model, tmp_folder, export_bs)
       result = self._load_and_run(tmp_folder, [input1, input2])
       result = np.array(result)
       ref_result = np.array(

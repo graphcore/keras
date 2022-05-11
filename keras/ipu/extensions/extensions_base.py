@@ -33,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager.def_function import function as tf_function
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu.ops import pipelining_ops
@@ -1886,7 +1887,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
     input_signature = tf.nest.flatten(input_signature)
     if any(None in input.shape for input in input_signature):
       raise ValueError('Not all dimensions of inputs can be determined. '
-                       'Please specify batch size in model\'s input layer.')
+                       'Please specify batch size in model\'s input layer or '
+                       'specify `batch_size` parameter when exporting model.')
     return input_signature
 
   def _wrap_model_call_for_serving(self, input_signature):
@@ -1919,7 +1921,14 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     return defunc
 
-  def export_for_ipu_serving(self, export_dir):
+  def _get_input_signature(self, batch_size=None):
+    input_signature = self._get_call_signature()
+    if batch_size is not None:
+      for single_input in input_signature:
+        single_input.shape.dims[0] = tensor_shape.Dimension(batch_size)
+    return input_signature
+
+  def export_for_ipu_serving(self, export_dir, batch_size=None):
     """Export Keras model using the SavedModel format for TensorFlow serving.
 
     Wrap model's ``call`` function inside a ``while`` loop, add an infeed for
@@ -1930,6 +1939,11 @@ class KerasExtensionBase(base_layer.KerasExtension):
     Args:
       export_dir (str): The path to the directory where the SavedModel will be
         written.
+      batch_size (int, optional): The batch size value to be used in the
+        exported model. If not specified and the model was built with a
+        specified batch size (different than None), the exported model will use
+        the currently set batch size. This argument must be specified if the
+        model's batch size is `None`.
 
     Returns:
       tf.function: A reference to the same predict function that was exported
@@ -1944,6 +1958,6 @@ class KerasExtensionBase(base_layer.KerasExtension):
       raise ValueError(
           "Directory is not empty. Please specify an empty directory.")
 
-    input_signature = self._get_call_signature()
+    input_signature = self._get_input_signature(batch_size)
     defunc = self._wrap_model_call_for_serving(input_signature)
     return serving._export_saved_model(defunc, export_dir, input_signature)  # pylint: disable=protected-access
