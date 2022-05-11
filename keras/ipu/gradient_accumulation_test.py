@@ -17,6 +17,7 @@ import os
 from absl.testing import parameterized
 
 import tensorflow.compat.v2 as tf
+import numpy as np
 
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
@@ -26,6 +27,8 @@ from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer as 
 import keras
 from keras import testing_utils
 from keras.datasets import mnist
+from keras.mixed_precision import policy
+from keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 
 
 def get_mnist_dataset(batch_size):
@@ -96,6 +99,14 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
           ga.GradientAccumulationReductionMethod.RUNNING_MEAN
       ])
 
+  MINIMIZE_TESTCASES = [{
+      'testcase_name': 'mixed_precision',
+      'mixed': True
+  }, {
+      'testcase_name': 'non_mixed_precision',
+      'mixed': False
+  }]
+
   @parameterized.named_parameters(*TESTCASES)
   @testing_utils.run_v2_only
   def testModels(self, model_fn, replication_factor, reduction_method):
@@ -155,6 +166,42 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
             m._gradient_accumulation_reduction_method,  # pylint: disable=protected-access
             reduction_method)
         self.assertFalse(m._gradient_accumulation_optimizer_kwargs)  # pylint: disable=protected-access
+
+  @parameterized.named_parameters(*MINIMIZE_TESTCASES)
+  @testing_utils.run_v2_only
+  def testNoOverrideMinimizeWithGradientAccumulation(self, mixed):
+    class BadSGD(gradient_descent_v2.SGD):
+      def __init__(self, lr):  # pylint: disable=useless-super-delegation
+        super().__init__(lr)
+
+      def minimize(self, loss, var_list, grad_loss=None, name=None, tape=None):  # pylint: disable=unused-argument
+        return 0
+
+    cfg = ipu.config.IPUConfig()
+    cfg.auto_select_ipus = 1
+    tu.add_hw_ci_connection_options(cfg)
+    cfg.configure_ipu_system()
+
+    if mixed:
+      mp_policy = policy.Policy('mixed_float16')
+      policy.set_policy(mp_policy)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      input_layer = keras.layers.Input(1)
+      x = keras.layers.Dense(1)(input_layer)
+      l = keras.losses.MeanSquaredError(reduction="sum")
+
+      m = keras.Model(inputs=input_layer, outputs=x)
+      m.compile(loss=l, optimizer=BadSGD(0.1), steps_per_execution=2)
+
+      m.set_gradient_accumulation_options(
+          gradient_accumulation_steps_per_replica=2)
+
+      with self.assertRaisesRegex(ValueError,
+                                  "must not override OptimizerV2.minimize"):
+        data = [np.ones((64, 1), dtype=np.float16)] * 2
+        _ = m.fit(*data, epochs=1, verbose=False)
 
 
 if __name__ == '__main__':
