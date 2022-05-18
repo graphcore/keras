@@ -5,7 +5,7 @@
             "yapf.style": "{based_on_style: pep8, indent_width: 2, space_between_ending_comma_and_closing_bracket: false}",
             "bin": ["./.linters/yapf"],
             "include": [
-                "(.*\\.py$)"
+                "(^keras/ipu/.*\\.py$)"
             ]
         },
         "pylint": {
@@ -14,13 +14,13 @@
             "flags": ["--disable=missing-docstring,invalid-name"],
             "bin": ["./.linters/pylint"],
             "include": [
-                "(.*\\.py$)"
+                "(^keras/ipu/.*\\.py$)"
             ]
         },
         "buildifier": {
           "type": "script-and-regex",
           "include": [
-               "(.*BUILD$)"
+               "(^keras/ipu/.*BUILD$)"
           ],
           "script-and-regex.script": "sh -c '{ ./.linters/buildifier -lint warn -mode check $0 2>&1 ; ./.linters/buildifier -mode fix -lint fix $0;} || true'",
           "script-and-regex.regex": "/^(?P<file>[^ :]*)(( # )|(:(?P<line>[^:]+): ))(?P<name>[^:]+)(: (?P<message>.*))?$/m"
