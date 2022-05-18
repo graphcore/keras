@@ -142,6 +142,13 @@ def log_device_compatibility_check(policy_name):
   if _logged_compatibility_check:
     return
   _logged_compatibility_check = True
+
+  # Begin IPU specific changes
+  ipus = tf.config.list_physical_devices('IPU')
+  if len(ipus):
+    return
+  # End IPU specific changes
+
   gpus = tf.config.list_physical_devices('GPU')
   gpu_details_list = [tf.config.experimental.get_device_details(g) for g in gpus]
   _log_device_compatibility_check(policy_name, gpu_details_list)

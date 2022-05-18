@@ -192,7 +192,7 @@ class PolicyTest(tf.test.TestCase, parameterized.TestCase):
     device_compatibility_check._logged_compatibility_check = False
     with tf.compat.v1.test.mock.patch.object(tf_logging, 'warning') as mock_warn:
       mp_policy.Policy('mixed_float16')
-    if tf.config.list_physical_devices('GPU'):
+    if tf.config.list_physical_devices('GPU') or tf.config.list_physical_devices('IPU'):
       mock_warn.assert_not_called()
     else:
       self.assertRegex(
