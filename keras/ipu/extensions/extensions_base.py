@@ -1928,7 +1928,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
         single_input.shape.dims[0] = tensor_shape.Dimension(batch_size)
     return input_signature
 
-  def export_for_ipu_serving(self, export_dir, batch_size=None):
+  def export_for_ipu_serving(self,
+                             export_dir,
+                             batch_size=None,
+                             output_names=None):
     """Export Keras model using the SavedModel format for TensorFlow serving.
 
     Wrap model's ``call`` function inside a ``while`` loop, add an infeed for
@@ -1944,6 +1947,9 @@ class KerasExtensionBase(base_layer.KerasExtension):
         specified batch size (different than None), the exported model will use
         the currently set batch size. This argument must be specified if the
         model's batch size is `None`.
+      output_names (str or list, optional): Output name or list of output names
+      for the outputs in the SavedModel's SignatureDef. If not provided, outputs
+      will be named: ``output_0``, ``output_1`` and so on.
 
     Returns:
       tf.function: A reference to the same predict function that was exported
@@ -1960,4 +1966,5 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     input_signature = self._get_input_signature(batch_size)
     defunc = self._wrap_model_call_for_serving(input_signature)
-    return serving._export_saved_model(defunc, export_dir, input_signature)  # pylint: disable=protected-access
+    return serving._export_saved_model(  # pylint: disable=protected-access
+        defunc, export_dir, input_signature, output_names)

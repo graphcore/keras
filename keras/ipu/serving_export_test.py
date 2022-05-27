@@ -44,7 +44,6 @@ class TestServingExportBase(tf.test.TestCase, parameterized.TestCase):
     imported = tf.saved_model.load(path)
     loaded = imported.signatures[
         tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-    output_name = next(iter(loaded.structured_outputs.values())).name
     input_names = [inp.name.split(':')[0] for inp in loaded.inputs]
 
     if isinstance(inputs, list):
@@ -60,7 +59,7 @@ class TestServingExportBase(tf.test.TestCase, parameterized.TestCase):
     with strategy.scope():
       result = strategy.run(loaded, kwargs=inputs)
 
-    return result[output_name]
+    return result
 
 
 class ExportForServingTest(TestServingExportBase):
@@ -89,18 +88,21 @@ class ExportForServingTest(TestServingExportBase):
     input_data = np.array([[[-1.0], [2.0], [-3.0]]], dtype=np.float32)
 
     with tempfile.TemporaryDirectory() as tmp_folder:
-      runtime_func = ipu.serving.export_keras(model, tmp_folder, export_bs)
+      runtime_func = ipu.serving.export_keras(model,
+                                              tmp_folder,
+                                              export_bs,
+                                              output_names='result')
       # Test runtime function
       with strategy.scope():
         runtime_result = strategy.run(runtime_func,
                                       args=(tf.constant(input_data),))
-        runtime_result = np.array(runtime_result[0])
+        runtime_result = np.array(runtime_result['result'])
       ref_result = np.array([[[3.0, 3.0], [0.0, 0.0]]], dtype=np.float32)
       self.assertTrue(np.array_equal(runtime_result, ref_result))
 
       # Test loaded model
       loaded_result = self._load_and_run(tmp_folder, input_data)
-      loaded_result = np.array(loaded_result)
+      loaded_result = np.array(loaded_result['result'])
       self.assertTrue(np.array_equal(loaded_result, ref_result))
 
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
@@ -124,8 +126,10 @@ class ExportForServingTest(TestServingExportBase):
           kernel_size=2,
           kernel_initializer=keras.initializers.Constant(value=3))(input1)
       x = keras.layers.Add()([x, input2])
-      x = keras.layers.Activation('relu')(x)
-      model = keras.Model(inputs=[input1, input2], outputs=x)
+      result_0 = keras.layers.Activation('relu')(x)
+      result_1 = tf.math.reduce_sum(result_0, 2)
+      model = keras.Model(inputs=[input1, input2],
+                          outputs=[result_0, result_1])
 
       model.build([input1_shape, input2_shape])
       model.compile(steps_per_execution=16)
@@ -136,11 +140,17 @@ class ExportForServingTest(TestServingExportBase):
     input2 = np.array([[2.0]], dtype=np.float32)
 
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder, export_bs)
+      ipu.serving.export_keras(model,
+                               tmp_folder,
+                               export_bs,
+                               output_names=["result_0", "result_1"])
       result = self._load_and_run(tmp_folder, {'x1': input1, 'x2': input2})
-      result = np.array(result)
-      ref_result = np.array([[[5.0, 5.0], [0.0, 0.0]]], dtype=np.float32)
-      self.assertTrue(np.array_equal(result, ref_result))
+      result_0 = np.array(result['result_0'])
+      result_1 = np.array(result['result_1'])
+      ref_result_0 = np.array([[[5.0, 5.0], [0.0, 0.0]]], dtype=np.float32)
+
+      self.assertTrue(np.array_equal(result_0, ref_result_0))
+      self.assertTrue(np.array_equal(result_1, np.add.reduce(ref_result_0, 2)))
 
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -186,7 +196,7 @@ class ExportForServingTest(TestServingExportBase):
           'input_1': input1,
           'input_2': input2
       })
-      result = np.array(result)
+      result = np.array(result['output_0'])
       ref_result = np.array(
           [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
           dtype=np.float32)
@@ -254,7 +264,7 @@ class ExportForServingTest(TestServingExportBase):
     with tempfile.TemporaryDirectory() as tmp_folder:
       ipu.serving.export_keras(model, tmp_folder, export_bs)
       result = self._load_and_run(tmp_folder, input1)
-      result = np.array(result)
+      result = np.array(result['output_0'])
       ref_result = np.array(
           [[[3.0, 3.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]],
           dtype=np.float32)
@@ -286,9 +296,10 @@ class ExportForServingTest(TestServingExportBase):
 
       with keras.ipu.PipelineStage(1):
         x = keras.layers.Add()([x, input2])
-        x = keras.layers.Activation('relu')(x)
+        out_0 = keras.layers.Activation('relu')(x)
+        out_1 = tf.math.reduce_sum(out_0, 2)
 
-      model = keras.Model(inputs=(input1, input2), outputs=x)
+      model = keras.Model(inputs=(input1, input2), outputs=[out_0, out_1])
 
       model.set_pipelining_options(device_mapping=[0, 1])
 
@@ -302,13 +313,18 @@ class ExportForServingTest(TestServingExportBase):
     input2 = np.array([[2.0], [4.0]], dtype=np.float32)
 
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder, export_bs)
+      ipu.serving.export_keras(model,
+                               tmp_folder,
+                               export_bs,
+                               output_names=["out_0", "out_1"])
       result = self._load_and_run(tmp_folder, {'x1': input1, 'x2': input2})
-      result = np.array(result)
-      ref_result = np.array(
+      out_0 = np.array(result['out_0'])
+      out_1 = np.array(result['out_1'])
+      ref_out_0 = np.array(
           [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
           dtype=np.float32)
-      self.assertTrue(np.array_equal(result, ref_result))
+      self.assertTrue(np.array_equal(out_0, ref_out_0))
+      self.assertTrue(np.array_equal(out_1, np.add.reduce(ref_out_0, 2)))
 
   @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -336,8 +352,9 @@ class ExportForServingTest(TestServingExportBase):
 
         with keras.ipu.PipelineStage(1):
           x = self.add([x, y])
-          x = self.relu(x)
-        return x
+          out0 = self.relu(x)
+          out1 = tf.math.reduce_sum(out0, 1)
+        return out0, out1
 
     strategy = ipu.ipu_strategy.IPUStrategy()
     with strategy.scope():
@@ -352,13 +369,17 @@ class ExportForServingTest(TestServingExportBase):
                       dtype=np.float32)
     input2 = np.array([[2.0], [4.0]], dtype=np.float32)
     with tempfile.TemporaryDirectory() as tmp_folder:
-      ipu.serving.export_keras(model, tmp_folder, export_bs)
+      ipu.serving.export_keras(model,
+                               tmp_folder,
+                               export_bs,
+                               output_names=['out0', 'out1'])
       result = self._load_and_run(tmp_folder, [input1, input2])
-      result = np.array(result)
-      ref_result = np.array(
-          [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
-          dtype=np.float32)
-      self.assertTrue(np.array_equal(result, ref_result))
+      result_out0 = np.array(result['out0'])
+      result_out1 = np.array(result['out1'])
+      ref_out0 = np.array([[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
+                          dtype=np.float32)
+      self.assertTrue(np.array_equal(result_out0, ref_out0))
+      self.assertTrue(np.array_equal(result_out1, np.add.reduce(ref_out0, 1)))
 
 
 if __name__ == '__main__':
