@@ -375,3 +375,20 @@ tf_py_test(
         "//keras/api:keras_api",
     ],
 )
+
+poprun_py_test(
+    name = "poprun_popdist_strategy_test",
+    size = "large",
+    srcs = ["poprun_popdist_strategy_test.py"],
+    main = "poprun_popdist_strategy_test.py",
+    num_instances = 2,
+    num_replicas = 2,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
