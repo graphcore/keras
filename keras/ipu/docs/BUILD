@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//keras/ipu/docs/keras_docs_py_test:keras_docs_py_test.bzl", "keras_docs_py_test")
+
 package(
     default_visibility = [
         "//keras:__subpackages__",
@@ -26,86 +28,98 @@ filegroup(
     visibility = ["//keras/google/private_tf_api_test:__pkg__"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example1",
     size = "large",
     srcs = ["example1.py"],
+    main = "example1.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example2",
     size = "large",
     srcs = ["example2.py"],
+    main = "example2.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example3",
     size = "large",
     srcs = ["example3.py"],
+    main = "example3.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example4",
     size = "large",
     srcs = ["example4.py"],
+    main = "example4.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example5",
     size = "large",
     srcs = ["example5.py"],
+    main = "example5.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example6",
     size = "large",
     srcs = ["example6.py"],
+    main = "example6.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example7",
     size = "large",
     srcs = ["example7.py"],
+    main = "example7.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example8",
     size = "large",
     srcs = ["example8.py"],
+    main = "example8.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example9",
     size = "large",
     srcs = ["example9.py"],
+    main = "example9.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example10",
     size = "large",
     srcs = ["example10.py"],
+    main = "example10.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example11",
     size = "large",
     srcs = ["example11.py"],
+    main = "example11.py",
     deps = ["//keras"],
 )
 
-py_test(
+keras_docs_py_test(
     name = "example12",
     size = "large",
     srcs = ["example12.py"],
+    main = "example12.py",
     deps = ["//keras"],
 )
