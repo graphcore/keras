@@ -123,3 +123,21 @@ keras_docs_py_test(
     main = "example12.py",
     deps = ["//keras"],
 )
+
+keras_docs_py_test(
+    name = "exporting_model_example",
+    size = "large",
+    srcs = ["exporting_model_example.py"],
+    main = "exporting_model_example.py",
+    num_ipus = 1,
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "exporting_pipelined_model_example",
+    size = "large",
+    srcs = ["exporting_pipelined_model_example.py"],
+    main = "exporting_pipelined_model_example.py",
+    num_ipus = 2,
+    deps = ["//keras"],
+)

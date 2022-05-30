@@ -467,6 +467,51 @@ IPU-specific internal state.
   again.
 
 
+Exporting precompiled Keras models for TensorFlow Serving
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are two ways of exporting Keras models for TensorFlow Serving, independent of whether they're pipelined or not.
+Keras models can be exported using the :py:func:`tensorflow.python.ipu.serving.export_keras` function.
+This takes only three arguments: the model to export, a directory where the SavedModel will be stored and, optionally, a batch size value.
+The other way uses the model's :py:func:`export_for_ipu_serving` method which takes only the path to the SavedModel directory and, optionally, a batch size value.
+
+It's important to note that before exporting the model you must build it, providing the input shapes to the model's :py:func:`build` method.
+Similarly to exporting non-Keras models, you can set the iteration
+parameter by calling the model's :py:func:`compile` method with `steps_per_execution` argument. The meaning of that parameter is analogous to that of non-Keras models, both non-pipelined and pipelined ones.
+In both cases you can use it to tweak the inference latency.
+
+Exported models contain Poplar programs compiled for specific batch size value. Because of that, you must always provide the batch size value to be used by the exported model.
+You can achieve it in two ways:
+
+* passing the `batch_size` argument explicitly to the export function, or
+* setting the batch size value during model creation and leaving the default value of the `batch_size` argument.
+
+
+Non-pipelined Keras model example
+_________________________________
+
+This example creates a simple non-pipelined Keras model that adds two inputs together.
+After that, the model is exported for TensorFlow Serving.
+
+.. literalinclude:: exporting_model_example.py
+  :language: python
+  :linenos:
+
+
+Pipelined Keras model example
+_____________________________
+
+This example creates a simple pipelined Keras model that adds two inputs together in the first pipeline stage
+and later multiplies the result of the addition operation with the second input in the second pipeline stage.
+After that, the model is exported for TensorFlow Serving.
+
+Note that building, compiling and exporting look exactly the same for pipelined and non-pipelined models.
+
+.. literalinclude:: exporting_pipelined_model_example.py
+  :language: python
+  :linenos:
+
+
 .. _implementation-details:
 
 Implementation details
