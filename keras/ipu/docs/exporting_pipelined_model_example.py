@@ -19,6 +19,8 @@ iterations = 16
 # Configure the IPU for compilation.
 cfg = ipu.config.IPUConfig()
 cfg.auto_select_ipus = 2
+cfg.device_connection.enable_remote_buffers = True
+cfg.device_connection.type = ipu.config.DeviceConnectionType.ON_DEMAND
 cfg.configure_ipu_system()
 
 # Always create Keras models inside an IPU strategy.
