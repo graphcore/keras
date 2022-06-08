@@ -3,7 +3,7 @@
 Keras with IPUs
 ---------------
 
-The Graphcore implementation of TensorFlow includes Keras support for IPUs.
+The Graphcore implementation of Keras includes support for the IPU.
 Keras model creation is no different than what you would use if you were
 training on other devices. To target the Poplar XLA device, Keras model creation
 must be inside the ``strategy.scope`` of an ``IPUStrategy``.
