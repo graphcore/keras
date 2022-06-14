@@ -21,6 +21,7 @@ import types
 
 import tensorflow.compat.v2 as tf
 
+from tensorflow.python.util.tf_export import keras_export
 from keras.ipu.extensions import extensions_base
 from keras.engine import base_layer_utils
 from keras.engine import functional
@@ -28,6 +29,7 @@ from keras.engine import input_layer
 from keras.engine import training as training_module
 
 
+@keras_export('keras.ipu.ModelLayerPipelineStageAssignment')
 class ModelLayerPipelineStageAssignment:
   """A class to indicate at which pipeline stage a layer in a `Model` subclass
   should be executed.

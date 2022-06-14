@@ -20,6 +20,7 @@ import copy
 
 import tensorflow.compat.v2 as tf
 
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 
 from keras.ipu.extensions import extensions_base
@@ -32,6 +33,7 @@ ipu_strategy = generic_utils.LazyLoader("ipu_strategy", globals(),
 # pylint: enable=g-inconsistent-quotes
 
 
+@keras_export('keras.ipu.PipelineStage')
 class PipelineStage:
   """A scope within which Keras Layers and/or calls to Keras layers can be
   assigned to pipeline stages.
@@ -99,6 +101,7 @@ class PipelineStage:
     delattr(strategy, "_pipeline_stage")
 
 
+@keras_export('keras.ipu.FunctionalLayerPipelineStageAssignment')
 class FunctionalLayerPipelineStageAssignment:
   """A class to indicate at which pipeline stage a layer in a `Functional` model
   should be executed.

@@ -20,12 +20,13 @@ import copy
 
 import tensorflow.compat.v2 as tf
 
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
 from keras.ipu.extensions import extensions_base
 from keras.engine import sequential
 
 
+@keras_export('keras.ipu.SequentialLayerPipelineStageAssignment')
 class SequentialLayerPipelineStageAssignment:
   """A class used to indicate which pipeline stage a layer in a `Sequential`
   model should be executed in.

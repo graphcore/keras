@@ -392,3 +392,17 @@ poprun_py_test(
         "//keras/api:keras_api",
     ],
 )
+
+tf_py_test(
+    name = "api_test",
+    size = "large",
+    srcs = ["api_test.py"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
