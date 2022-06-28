@@ -5,6 +5,126 @@
 This repository hosts the development of the Keras library.
 Read the documentation at [keras.io](https://keras.io/).
 
+## IPU Keras
+
+This version of Keras has been modified to optimise the performance of Keras
+models running on Graphcore IPUs.
+
+See the [IPU TensorFlow user guide](https://docs.graphcore.ai/projects/tensorflow-user-guide) for how to use Keras with IPUs.
+
+This section explains how to build the wheel file, and how to run tests.
+
+### Prerequisites
+Bazel 3.7.2 is required for building wheel files and running tests.
+
+For running the tests, you will need a wheel file for a compatible version of IPU TensorFlow, and a
+matching Poplar installation (from the same Poplar SDK).
+
+### TL;DR
+```
+lang=sh
+# Prerequisites:
+# Make sure you have the prerequisites listed in the above section.
+# Navigate to your Keras repository.
+
+# Configure:
+export TF_POPLAR_BASE=<absolute-path-to-poplar-install>
+python configure.py <path-to-tf-wheel>
+
+# Build a wheel:
+bazel run //keras/tools/pip_package:build_pip_package <absolute-path-to-output-directory> <tf-version-number>
+
+# Run all non-HW tests:
+bazel test $(bazel query //keras/...)
+ --test_env=TF_POPLAR_FLAGS="--max_infeed_threads=8 --use_ipu_model --max_compilation_threads=1 --ipu_model_tiles=8" --test_env=TF_POPLAR_VLOG_LEVEL=1 --test_size_filters=small,medium,large --test_timeout="240,360,900,3600" --test_output=errors
+
+# Run all HW tests:
+bazel test $(bazel query //keras/...)
+ --test_tag_filters=hw_poplar_test --test_env=TF_POPLAR_FLAGS="--max_infeed_threads=8 --max_compilation_threads=1" --test_env=TF_POPLAR_VLOG_LEVEL=1 --test_size_filters=small,medium,large --test_timeout="1200,1200,1200,1200" --test_output=errors
+
+```
+
+### Configuring
+Before building a wheel file or running tests, you will first need to run the `configure` script found in the root of the
+repository. This creates a `.bazelrc.user` which specifies bazel configuration options required to
+run the tests. One thing this does is set up the test environment so that TensorFlow and Poplar
+are available.
+
+Before running the script you need to set `TF_POPLAR_BASE` to the absolute path to your Poplar
+installation. The script also requires positional arguments. Call `bash configure --help` for more
+information.
+
+```
+lang=sh
+export TF_POPLAR_BASE=<absolute-path-to-poplar-install>
+bash ./configure <path-to-tf-wheel> <path-to-keras-wheel>
+```
+
+After calling the configure script, you can add customisations to the `.bazelrc.user` file.
+
+### Building a wheel
+The bazel script target `//keras/tools/pip_package:build_pip_package` is used to
+build wheel files. It links a subset of the Python source files into a build directory,
+and uses setuptools to build a wheel file from them.
+
+The script requires positional arguments. For more information pass `--help` using any of the
+methods below.
+
+The script can be run completely through bazel using the following command:
+
+```
+lang=sh
+bazel run //keras/tools/pip_package:build_pip_package -- <args>
+```
+
+Using `bazel run` means the script will be run from within the `bazel-bin` directory, so it's
+recommended that you specify an absolute path for the `output_directory` argument. Alternatively,
+you can build the script using bazel, then run it manually with the following commands:
+
+```
+lang=sh
+bazel build //keras/tools/pip_package:build_pip_package
+bash bazel-bin/keras/tools/pip_package/build_pip_package <args>
+```
+
+### Running the tests
+The following command can be used to run all of the tests. Unless you know what they do, it is
+recommended that you pass all of the arguments shown in the command when running tests.
+
+```
+lang=sh
+bazel test --test_env=TF_POPLAR_FLAGS="--max_infeed_threads=8 --use_ipu_model --max_compilation_threads=1 --ipu_model_tiles=8" --test_env=TF_POPLAR_VLOG_LEVEL=1 --test_size_filters=small,medium,large --test_timeout="240,360,900,3600" --test_output=errors $(bazel query //keras/...)
+
+```
+
+You can specify a different bazel test target to run a more specific set of tests.
+
+```
+lang=sh
+bazel test --test_env=TF_POPLAR_FLAGS="--max_infeed_threads=8 --use_ipu_model --max_compilation_threads=1 --ipu_model_tiles=8" --test_env=TF_POPLAR_VLOG_LEVEL=1 --test_size_filters=small,medium,large --test_timeout="240,360,900,3600" --test_output=errors //keras/ipu:sequential_test
+```
+
+You can also run a single test by specifying `--test_arg`.
+
+```
+lang=sh
+bazel test --test_env=TF_POPLAR_FLAGS="--max_infeed_threads=8 --use_ipu_model --max_compilation_threads=1 --ipu_model_tiles=8" --test_env=TF_POPLAR_VLOG_LEVEL=1 --test_size_filters=small,medium,large --test_timeout="240,360,900,3600" --test_output=errors //keras/ipu:sequential_test --test_arg IPUModelTest.testEmptyModelCreation
+```
+
+#### Running HW tests
+To run hardware tests, you need to pass a different set of arguments to bazel test.
+
+```
+lang=sh
+bazel test --test_env=TF_POPLAR_FLAGS="--max_infeed_threads=8 --max_compilation_threads=1" --test_env=TF_POPLAR_VLOG_LEVEL=1 --test_size_filters=small,medium,large --test_timeout="1200,1200,1200,1200" --test_output=errors --test_tag_filters=hw_poplar_test_{A}_ipus --test_env="TF_IPU_COUNT={B}" --jobs {C} $(bazel query //keras/...)
+
+```
+The `{A}` in `--test_tag_filters=hw_poplar_test_{A}_ipus` specifies which set of tests to run, the valid values are 1, 2, 4, 8 and 16.
+The `{B}` in `--test_env="TF_IPU_COUNT={B}"` specifies how many IPUs there are in total in the system.
+The `{C}` in `--jobs {C}` specifies how many parallel tests to run. This value should be set to `B / A`.
+
+Note that `--use_ipu_model` and `--ipu_model_tiles` have been omitted from `--test_env=TF_POPLAR_FLAGS`.
+
 ## About Keras
 
 Keras is a deep learning API written in Python,
