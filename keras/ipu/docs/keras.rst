@@ -1,4 +1,4 @@
-.. _keras:
+.. _keras-with-ipus:
 
 Keras with IPUs
 ---------------
