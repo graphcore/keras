@@ -511,6 +511,13 @@ Note that building, compiling and exporting look exactly the same for pipelined 
   :language: python
   :linenos:
 
+IPU-specific Keras layers and optimizers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `ipu_tensorflow_addons.keras.layers` namespace contains IPU-specific
+implementations of standard Keras layers and optimizers. More information,
+including details of every layer and optimizer in this namespace and a code
+example showing how to use it can be found in :numref:`ipu-tensorflow-addons`.
 
 .. _implementation-details:
 
