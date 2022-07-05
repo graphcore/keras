@@ -154,6 +154,43 @@ class ExportForServingTest(TestServingExportBase):
 
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
+  def test_export_keras_no_bs_in_input(self):
+    batch_size = 4
+    input_shape = (batch_size, 3, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      # Create an input layer without batch size specification
+      model_input = keras.layers.Input(shape=input_shape[1:], name='input')
+      x = keras.layers.Conv1D(
+          filters=2,
+          kernel_size=2,
+          kernel_initializer=keras.initializers.Constant(value=3))(model_input)
+      result = keras.layers.Activation('relu')(x)
+      model = keras.Model(inputs=[model_input], outputs=[result])
+
+      # Build method should not be able to set batch size, as the model has
+      # explicit input layer without specified batch size
+      model.build(input_shape)
+      model.compile(steps_per_execution=16)
+
+    export_bs = tf.constant(1, dtype=tf.int32)
+    input_data = np.array([[[-1.0], [2.0], [-3.0]]], dtype=np.float32)
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      # Export method should set batch size to `export_bs`
+      ipu.serving.export_keras(model,
+                               tmp_folder,
+                               export_bs,
+                               output_names=['result'])
+      result = self._load_and_run(tmp_folder, input_data)
+      result = np.array(result['result'])
+      ref_result = np.array([[[3.0, 3.0], [0.0, 0.0]]], dtype=np.float32)
+
+      self.assertTrue(np.array_equal(result, ref_result))
+
+  @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
+  @testing_utils.run_v2_only
   def test_export_keras_subclass_model_two_inputs(self):
     # Build model with batch size 8
     initial_bs = tf.constant(8, dtype=tf.int32)

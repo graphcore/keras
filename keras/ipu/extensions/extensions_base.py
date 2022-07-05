@@ -1885,10 +1885,6 @@ class KerasExtensionBase(base_layer.KerasExtension):
           'using `model.build()` or invoke your model using real data.')
 
     input_signature = tf.nest.flatten(input_signature)
-    if any(None in input.shape for input in input_signature):
-      raise ValueError('Not all dimensions of inputs can be determined. '
-                       'Please specify batch size in model\'s input layer or '
-                       'specify `batch_size` parameter when exporting model.')
     return input_signature
 
   def _wrap_model_call_for_serving(self, input_signature):
@@ -1923,9 +1919,14 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
   def _get_input_signature(self, batch_size=None):
     input_signature = self._get_call_signature()
+
     if batch_size is not None:
       for single_input in input_signature:
         single_input.shape.dims[0] = tensor_shape.Dimension(batch_size)
+    elif any(None in input.shape for input in input_signature):
+      raise ValueError('Not all dimensions of inputs can be determined. '
+                       'Please specify batch size in model\'s input layer or '
+                       'specify `batch_size` parameter when exporting model.')
     return input_signature
 
   def export_for_ipu_serving(self,
