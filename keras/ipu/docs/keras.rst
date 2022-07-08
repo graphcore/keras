@@ -117,9 +117,15 @@ model layers are assigned to *pipeline stages*. Each pipeline stage can be
 assigned to a different device and different devices can execute in parallel.
 
 By default, these pipeline stages will be executed using the grouped schedule
-(:numref:`fig-grouped-pipeline`), where the forward and backward stages are grouped
-together on each IPU. All IPUs alternate between executing a forward pass and then a
-backward pass.
+(:numref:`fig-grouped-pipeline`), where the forward and backward stages are
+grouped together on each IPU. All IPUs alternate between executing a forward
+pass and then a backward pass.
+
+.. figure:: figures/grouped_pipeline.png
+   :align: center
+   :name: fig-grouped-pipeline
+
+   Grouped pipeline
 
 Two other schedules are available and can be configured as shown in
 :numref:`pipelining-options`. When using the interleaved schedule
@@ -127,6 +133,18 @@ Two other schedules are available and can be configured as shown in
 interleaved (which requires less memory but is likely to be slower). The
 sequential schedule (:numref:`fig-sequential-pipeline`) executes one stage at a
 time and may be useful when debugging your model.
+
+.. figure:: figures/interleaved_pipeline.png
+   :align: center
+   :name: fig-interleaved-pipeline
+
+   Interleaved pipeline
+
+.. figure:: figures/sequential_pipeline.png
+   :align: center
+   :name: fig-sequential-pipeline
+
+   Sequential pipeline
 
 A detailed explanation of pipelining can be found in the technical note on `Model parallelism with
 TensorFlow: sharding and pipelining <https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html>`_.
