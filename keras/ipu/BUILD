@@ -37,6 +37,7 @@ py_library(
     deps = [
         "//keras/ipu/extensions",
         "//keras/ipu/layers",
+        "//keras/ipu/optimizers",
     ],
 )
 
