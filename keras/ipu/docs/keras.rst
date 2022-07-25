@@ -498,6 +498,11 @@ Similarly to exporting non-Keras models, you can set the iteration
 parameter by calling the model's :py:func:`compile` method with `steps_per_execution` argument. The meaning of that parameter is analogous to that of non-Keras models, both non-pipelined and pipelined ones.
 In both cases you can use it to tweak the inference latency.
 
+The :py:func:`export_for_ipu_serving` method adds the possibility of passing the `preprocessing_step` and `postprocessing_step`
+functions which will be included into the SavedModel graph and executed on the CPU on the server. If all preprocessing
+and postprocessing operations are available on the IPU, `preprocessing_step` and `postprocessing_step` functions should
+be called inside the Keras model. Then function bodies will be compiled together with the inference model.
+
 Exported models contain Poplar programs compiled for specific batch size value. Because of that, you must always provide the batch size value to be used by the exported model.
 You can achieve it in two ways:
 
@@ -516,6 +521,25 @@ After that, the model is exported for TensorFlow Serving.
   :linenos:
 
 
+Non-pipelined Keras model example with additional preprocessing and postprocessing steps
+________________________________________________________________________________________
+
+This example exports a very simple Keras model with an embedded IPU program that adds two inputs together. The model also
+performs a preprocessing step (on the IPU) to compute the absolute value of the input tensors and a postprocessing step
+(on the IPU) to reduce the output.
+
+.. literalinclude:: exporting_model_preprocessing_postprocessing_example.py
+  :language: python
+  :linenos:
+
+This example exports a very simple Keras model with an embedded IPU program, which doubles the input tensor. The model
+also performs a preprocessing step (on the CPU) to convert string tensors to floats and a postprocessing step
+(on the CPU) to compute the absolute value of the outputs.
+
+.. literalinclude:: exporting_model_preprocessing_postprocessing_cpu_example.py
+  :language: python
+  :linenos:
+
 Pipelined Keras model example
 _____________________________
 
@@ -526,6 +550,28 @@ After that, the model is exported for TensorFlow Serving.
 Note that building, compiling and exporting look exactly the same for pipelined and non-pipelined models.
 
 .. literalinclude:: exporting_pipelined_model_example.py
+  :language: python
+  :linenos:
+
+Pipelined Keras model example with additional preprocessing and postprocessing steps
+____________________________________________________________________________________
+
+
+This example creates a simple pipelined Keras model that adds two inputs together in the first computational
+pipeline stage of the model and later multiplies the result of the addition operation with the second input
+in the next pipeline stage. The model also performs a preprocessing stage (on the IPU) to compute the
+absolute value of the input and a postprocessing stage (on the IPU) to reduce the output.
+
+.. literalinclude:: exporting_pipelined_model_preprocessing_postprocessing_example.py
+  :language: python
+  :linenos:
+
+This example creates a simple pipelined Keras model that adds two inputs together in the first pipeline stage
+and later multiplies the result of the addition operation with the second input in the second pipeline stage.
+The model also performs a preprocessing step (on the CPU) to convert string tensors to floats and a postprocessing step
+(on the CPU) to compute the absolute value of the outputs.
+
+.. literalinclude:: exporting_pipelined_model_preprocessing_postprocessing_cpu_example.py
   :language: python
   :linenos:
 

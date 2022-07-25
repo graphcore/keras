@@ -141,3 +141,39 @@ keras_docs_py_test(
     num_ipus = 2,
     deps = ["//keras"],
 )
+
+keras_docs_py_test(
+    name = "exporting_pipelined_model_preprocessing_postprocessing_example",
+    size = "large",
+    srcs = ["exporting_pipelined_model_preprocessing_postprocessing_example.py"],
+    main = "exporting_pipelined_model_preprocessing_postprocessing_example.py",
+    num_ipus = 4,
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "exporting_pipelined_model_preprocessing_postprocessing_cpu_example",
+    size = "large",
+    srcs = ["exporting_pipelined_model_preprocessing_postprocessing_cpu_example.py"],
+    main = "exporting_pipelined_model_preprocessing_postprocessing_cpu_example.py",
+    num_ipus = 2,
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "exporting_model_preprocessing_postprocessing_example",
+    size = "large",
+    srcs = ["exporting_model_preprocessing_postprocessing_example.py"],
+    main = "exporting_model_preprocessing_postprocessing_example.py",
+    num_ipus = 1,
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "exporting_model_preprocessing_postprocessing_cpu_example",
+    size = "large",
+    srcs = ["exporting_model_preprocessing_postprocessing_cpu_example.py"],
+    main = "exporting_model_preprocessing_postprocessing_cpu_example.py",
+    num_ipus = 1,
+    deps = ["//keras"],
+)

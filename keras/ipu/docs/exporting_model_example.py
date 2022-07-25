@@ -7,7 +7,7 @@ from tensorflow.python import ipu
 import keras
 
 # Directory where SavedModel will be written.
-saved_model_directory = './my_saved_model_ipu/003'
+saved_model_directory = './my_saved_model_ipu/007'
 # Directory should be empty or should not exist.
 if os.path.exists(saved_model_directory):
   shutil.rmtree(saved_model_directory)

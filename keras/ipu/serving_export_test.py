@@ -98,12 +98,72 @@ class ExportForServingTest(TestServingExportBase):
                                       args=(tf.constant(input_data),))
         runtime_result = np.array(runtime_result['result'])
       ref_result = np.array([[[3.0, 3.0], [0.0, 0.0]]], dtype=np.float32)
-      self.assertTrue(np.array_equal(runtime_result, ref_result))
+      self.assertAllClose(runtime_result, ref_result)
 
       # Test loaded model
       loaded_result = self._load_and_run(tmp_folder, input_data)
       loaded_result = np.array(loaded_result['result'])
-      self.assertTrue(np.array_equal(loaded_result, ref_result))
+      self.assertAllClose(loaded_result, ref_result)
+
+  @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_sequential_one_input_post_pre_processing(self):
+    # Build model with batch size 4
+    initial_bs = tf.constant(4, dtype=tf.int32)
+    input_shape = (initial_bs, 3, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategyV1()
+    with strategy.scope():
+      model = keras.Sequential()
+      model.add(
+          keras.layers.Conv1D(
+              filters=2,
+              kernel_size=2,
+              kernel_initializer=keras.initializers.Constant(value=3)))
+      model.add(keras.layers.Activation('relu'))
+
+      model.build(input_shape)
+      model.compile(steps_per_execution=16)
+
+    # Export and test model with batch size 1
+    export_bs = tf.constant(1, dtype=tf.int32)
+    input_data = np.array([[[-1.0], [2.0], [-3.0]]], dtype=np.float32)
+
+    @tf.function(input_signature=(tf.TensorSpec(shape=(export_bs, 3, 1),
+                                                dtype=np.float32),))
+    def preprocessing_step(intput_param):
+      return intput_param * 10
+
+    @tf.function(input_signature=(tf.TensorSpec(shape=(export_bs, 2, 2),
+                                                dtype=np.float32),))
+    def postprocessing_step(intput_param):
+      return intput_param, tf.reduce_sum(intput_param)
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      runtime_func = model.export_for_ipu_serving(
+          tmp_folder,
+          export_bs,
+          output_names=['result', 'result_reduced'],
+          preprocessing_step=preprocessing_step,
+          postprocessing_step=postprocessing_step)
+      # Test runtime function
+      with strategy.scope():
+        runtime_result = strategy.run(runtime_func,
+                                      args=(tf.constant(input_data),))
+      reduced_result = np.array(runtime_result['result_reduced'])
+      runtime_result = np.array(runtime_result['result'])
+
+      ref_result = np.array([[[30.0, 30.0], [0.0, 0.0]]], dtype=np.float32)
+      ref_reduced_result = np.sum(ref_result)
+      self.assertAllClose(runtime_result, ref_result)
+      self.assertAllClose(reduced_result, ref_reduced_result)
+
+      # Test loaded model
+      loaded_result = self._load_and_run(tmp_folder, input_data)
+      loaded_reduced_result = np.array(loaded_result['result_reduced'])
+      loaded_result = np.array(loaded_result['result'])
+      self.assertAllClose(loaded_result, ref_result)
+      self.assertAllClose(loaded_reduced_result, ref_reduced_result)
 
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -149,8 +209,66 @@ class ExportForServingTest(TestServingExportBase):
       result_1 = np.array(result['result_1'])
       ref_result_0 = np.array([[[5.0, 5.0], [0.0, 0.0]]], dtype=np.float32)
 
-      self.assertTrue(np.array_equal(result_0, ref_result_0))
-      self.assertTrue(np.array_equal(result_1, np.add.reduce(ref_result_0, 2)))
+      self.assertAllClose(result_0, ref_result_0)
+      self.assertAllClose(result_1, np.add.reduce(ref_result_0, 2))
+
+  @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_functional_two_inputs_preprocessing(self):
+    # Build model with batch size 4
+    initial_bs = tf.constant(4, dtype=tf.int32)
+    input1_shape = (initial_bs, 3, 1)
+    input2_shape = (initial_bs, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      input1 = keras.layers.Input(shape=input1_shape[1:],
+                                  name='x1',
+                                  batch_size=initial_bs)
+      input2 = keras.layers.Input(shape=input2_shape[1:],
+                                  name='x2',
+                                  batch_size=initial_bs)
+      x = keras.layers.Conv1D(
+          filters=2,
+          kernel_size=2,
+          kernel_initializer=keras.initializers.Constant(value=3))(input1)
+      x = keras.layers.Add()([x, input2])
+      result_0 = keras.layers.Activation('relu')(x)
+      result_1 = tf.math.reduce_sum(result_0, 2)
+      model = keras.Model(inputs=[input1, input2],
+                          outputs=[result_0, result_1])
+
+      model.build([input1_shape, input2_shape])
+      model.compile(steps_per_execution=16)
+
+    # Export and test model with batch size 1
+    export_bs = tf.constant(1, dtype=tf.int32)
+    input1 = np.array([[[-1.0], [2.0], [-3.0]]], dtype=np.float32)
+    input2 = np.array([[2.0]], dtype=np.float32)
+
+    preprocessing_step_signature = (tf.TensorSpec(shape=(export_bs, 3, 1),
+                                                  dtype=np.float32),
+                                    tf.TensorSpec(shape=(export_bs, 1),
+                                                  dtype=np.float32))
+
+    def preprocessing_step(x1, x2):
+      return tf.abs(x1), x2 * 2
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      model.export_for_ipu_serving(
+          tmp_folder,
+          export_bs,
+          output_names=["result_0", "result_1"],
+          preprocessing_step_signature=preprocessing_step_signature,
+          preprocessing_step=preprocessing_step)
+
+      result = self._load_and_run(tmp_folder, {'x1': input1, 'x2': input2})
+      result_0 = np.array(result['result_0'])
+      result_1 = np.array(result['result_1'])
+      ref_result_0 = np.array([[[13.0, 13.0], [19.0, 19.0]]], dtype=np.float32)
+
+      self.assertAllClose(result_0, ref_result_0)
+      self.assertAllClose(result_1, np.add.reduce(ref_result_0, 2))
 
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -187,7 +305,56 @@ class ExportForServingTest(TestServingExportBase):
       result = np.array(result['result'])
       ref_result = np.array([[[3.0, 3.0], [0.0, 0.0]]], dtype=np.float32)
 
-      self.assertTrue(np.array_equal(result, ref_result))
+      self.assertAllClose(result, ref_result)
+
+  @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_no_bs_in_input_postprocessing(self):
+    batch_size = 4
+    input_shape = (batch_size, 3, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      # Create an input layer without batch size specification
+      model_input = keras.layers.Input(shape=input_shape[1:], name='input')
+      x = keras.layers.Conv1D(
+          filters=2,
+          kernel_size=2,
+          kernel_initializer=keras.initializers.Constant(value=3))(model_input)
+      result = keras.layers.Activation('relu')(x)
+      model = keras.Model(inputs=[model_input], outputs=[result])
+
+      # The `build` method should not be able to set the batch size, as the
+      # model has an explicit input layer without a specified batch size
+      model.build(input_shape)
+      model.compile(steps_per_execution=16)
+
+    export_bs = tf.constant(1, dtype=tf.int32)
+    input_data = np.array([[[-1.0], [2.0], [-3.0]]], dtype=np.float32)
+
+    postprocessing_step_signature = (tf.TensorSpec(shape=(export_bs, 2, 2),
+                                                   dtype=np.float32,
+                                                   name='x'),)
+    var_value = np.float32(1.)
+    w = tf.Variable(var_value)
+
+    def postprocessing_step(x):
+      return x - w
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      # The `export` method should set the batch size to `export_bs`
+      model.export_for_ipu_serving(
+          tmp_folder,
+          export_bs,
+          output_names=['result'],
+          postprocessing_step_signature=postprocessing_step_signature,
+          postprocessing_step=postprocessing_step)
+
+      result = self._load_and_run(tmp_folder, input_data)
+      result = np.array(result['result'])
+      ref_result = np.array([[[2.0, 2.0], [-1.0, -1.0]]], dtype=np.float32)
+
+      self.assertAllClose(result, ref_result)
 
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -237,7 +404,77 @@ class ExportForServingTest(TestServingExportBase):
       ref_result = np.array(
           [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
           dtype=np.float32)
-      self.assertTrue(np.array_equal(result, ref_result))
+      self.assertAllClose(result, ref_result)
+
+  @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_subclass_model_two_inputs_pre_post_preocessing(self):
+    # Build model with batch size 8
+    initial_bs = tf.constant(8, dtype=tf.int32)
+    input1_shape = (initial_bs, 3, 1)
+    input2_shape = (initial_bs, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+
+      class SimpleModel(keras.Model):  # pylint: disable=abstract-method
+        def __init__(self):
+          super().__init__()
+          self.conv = keras.layers.Conv1D(
+              filters=2,
+              kernel_size=2,
+              kernel_initializer=keras.initializers.Constant(value=3))
+          self.relu = keras.layers.Activation('relu')
+          self.add = keras.layers.Add()
+
+        def call(self, inputs):  # pylint: disable=arguments-differ
+          input1, input2 = inputs[0], inputs[1]
+          x = self.conv(input1)
+          x = self.add([x, input2])
+          x = self.relu(x)
+          return x
+
+      model = SimpleModel()
+      model.build([input1_shape, input2_shape])
+      model.compile(steps_per_execution=16)
+
+    # Export and test model with batch size 2
+    export_bs = tf.constant(2, dtype=tf.int32)
+    input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
+                      dtype=np.float32)
+    input2 = np.array([[2.0], [4.0]], dtype=np.float32)
+
+    preprocessing_step_signature = (tf.TensorSpec(shape=(export_bs, 3, 1),
+                                                  dtype=np.float32),
+                                    tf.TensorSpec(shape=(export_bs, 1),
+                                                  dtype=np.float32))
+    var_value = np.float32(4.)
+    w = tf.Variable(var_value)
+
+    def preprocessing_step(input_1, input_2):
+      return input_1 * 2, input_2 * w
+
+    postprocessing_step_signature = (tf.TensorSpec(shape=(export_bs, 2, 2),
+                                                   dtype=np.float32),)
+
+    def postprocessing_step(input_1):
+      return tf.reduce_sum(input_1)
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      model.export_for_ipu_serving(
+          tmp_folder,
+          export_bs,
+          preprocessing_step=preprocessing_step,
+          preprocessing_step_signature=preprocessing_step_signature,
+          postprocessing_step=postprocessing_step,
+          postprocessing_step_signature=postprocessing_step_signature)
+      result = self._load_and_run(tmp_folder, {
+          'input_1': input1,
+          'input_2': input2
+      })
+      result = np.array(result['output_0'])
+      ref_result = np.array([66.], dtype=np.float32)
+      self.assertAllClose(float(result), float(ref_result))
 
   @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -305,7 +542,51 @@ class ExportForServingTest(TestServingExportBase):
       ref_result = np.array(
           [[[3.0, 3.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]],
           dtype=np.float32)
-      self.assertTrue(np.array_equal(result, ref_result))
+      self.assertAllClose(result, ref_result)
+
+  @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_pipelined_sequential_preprocessing_one_input(self):
+    self.use_ipus(2)
+    # Build model with batch size 5
+    intial_bs = tf.constant(5, dtype=tf.int32)
+    input_shape = (intial_bs, 3, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Conv1D(
+              filters=2,
+              kernel_size=2,
+              kernel_initializer=keras.initializers.Constant(value=3)))
+      model.add(keras.layers.Activation('relu'))
+
+      model.set_pipeline_stage_assignment([0, 1])
+      model.set_pipelining_options(device_mapping=[0, 1])
+      model.build(input_shape)
+      model.compile(steps_per_execution=16)
+
+    # Export and test model with batch size 2
+    export_bs = tf.constant(2, dtype=tf.int32)
+    input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
+                      dtype=np.float32)
+
+    @tf.function(input_signature=(tf.TensorSpec(shape=(export_bs, 3, 1),
+                                                dtype=np.float32),))
+    def preprocessing_step(input_value):
+      return input_value * 10
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      model.export_for_ipu_serving(tmp_folder,
+                                   export_bs,
+                                   preprocessing_step=preprocessing_step)
+      result = self._load_and_run(tmp_folder, input1)
+      result = np.array(result['output_0'])
+      ref_result = np.array(
+          [[[30.0, 30.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]],
+          dtype=np.float32)
+      self.assertAllClose(result, ref_result)
 
   @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -360,8 +641,71 @@ class ExportForServingTest(TestServingExportBase):
       ref_out_0 = np.array(
           [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
           dtype=np.float32)
-      self.assertTrue(np.array_equal(out_0, ref_out_0))
-      self.assertTrue(np.array_equal(out_1, np.add.reduce(ref_out_0, 2)))
+      self.assertAllClose(out_0, ref_out_0)
+      self.assertAllClose(out_1, np.add.reduce(ref_out_0, 2))
+
+  @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_pipelined_functional_two_inputs_postprocessing(self):
+    self.use_ipus(2)
+    # Build model with batch size 8
+    initial_bs = tf.constant(8, dtype=tf.int32)
+    input1_shape = (initial_bs, 3, 1)
+    input2_shape = (initial_bs, 1)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      input1 = keras.layers.Input(shape=input1_shape[1:],
+                                  name='x1',
+                                  batch_size=initial_bs)
+      input2 = keras.layers.Input(shape=input2_shape[1:],
+                                  name='x2',
+                                  batch_size=initial_bs)
+
+      with keras.ipu.PipelineStage(0):
+        x = keras.layers.Conv1D(
+            filters=2,
+            kernel_size=2,
+            kernel_initializer=keras.initializers.Constant(value=3))(input1)
+
+      with keras.ipu.PipelineStage(1):
+        x = keras.layers.Add()([x, input2])
+        out_0 = keras.layers.Activation('relu')(x)
+        out_1 = tf.math.reduce_sum(out_0, 2)
+
+      model = keras.Model(inputs=(input1, input2), outputs=[out_0, out_1])
+
+      model.set_pipelining_options(device_mapping=[0, 1])
+
+      model.build((input1_shape, input2_shape))
+      model.compile(steps_per_execution=16)
+
+    # Export and test model with batch size 2
+    export_bs = tf.constant(2, dtype=tf.int32)
+    input1 = np.array([[[-1.0], [2.0], [-3.0]], [[-0.5], [0.0], [-2.0]]],
+                      dtype=np.float32)
+    input2 = np.array([[2.0], [4.0]], dtype=np.float32)
+
+    @tf.function(input_signature=(tf.TensorSpec(shape=(export_bs, 2, 2),
+                                                dtype=np.float32),
+                                  tf.TensorSpec(shape=(export_bs, 2),
+                                                dtype=np.float32)))
+    def postprocessing_step(x1, x2):
+      return tf.add(x1, x1), x2
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      model.export_for_ipu_serving(tmp_folder,
+                                   export_bs,
+                                   output_names=["out_0", "out_1"],
+                                   postprocessing_step=postprocessing_step)
+      result = self._load_and_run(tmp_folder, {'x1': input1, 'x2': input2})
+      out_0 = np.array(result['out_0'])
+      out_1 = np.array(result['out_1'])
+      ref_out_0 = np.array(
+          [[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
+          dtype=np.float32)
+      self.assertAllClose(out_0, ref_out_0 + ref_out_0)
+      self.assertAllClose(out_1, np.add.reduce(ref_out_0, 2))
 
   @tu.test_uses_ipus(num_ipus=2, allow_ipu_model=False)
   @testing_utils.run_v2_only
@@ -415,8 +759,8 @@ class ExportForServingTest(TestServingExportBase):
       result_out1 = np.array(result['out1'])
       ref_out0 = np.array([[[5.0, 5.0], [0.0, 0.0]], [[2.5, 2.5], [0.0, 0.0]]],
                           dtype=np.float32)
-      self.assertTrue(np.array_equal(result_out0, ref_out0))
-      self.assertTrue(np.array_equal(result_out1, np.add.reduce(ref_out0, 1)))
+      self.assertAllClose(result_out0, ref_out0)
+      self.assertAllClose(result_out1, np.add.reduce(ref_out0, 1))
 
 
 if __name__ == '__main__':

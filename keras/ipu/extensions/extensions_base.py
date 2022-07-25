@@ -1932,7 +1932,12 @@ class KerasExtensionBase(base_layer.KerasExtension):
   def export_for_ipu_serving(self,
                              export_dir,
                              batch_size=None,
-                             output_names=None):
+                             output_names=None,
+                             preprocessing_step=None,
+                             preprocessing_step_signature=None,
+                             postprocessing_step=None,
+                             postprocessing_step_signature=None,
+                             purge_export_dir=False):
     """Export Keras model using the SavedModel format for TensorFlow serving.
 
     Wrap model's ``call`` function inside a ``while`` loop, add an infeed for
@@ -1949,23 +1954,85 @@ class KerasExtensionBase(base_layer.KerasExtension):
         the currently set batch size. This argument must be specified if the
         model's batch size is `None`.
       output_names (str or list, optional): Output name or list of output names
-      for the outputs in the SavedModel's SignatureDef. If not provided, outputs
-      will be named: ``output_0``, ``output_1`` and so on.
-
-    Returns:
-      tf.function: A reference to the same predict function that was exported
-      using the SavedModel format. This function uses the embedded runtime op to
-      run the executable that was included in the SavedModel's ``assets``
-      subfolder.
+        for the outputs in the SavedModel's SignatureDef. If not provided,
+        outputs will be named: ``output_0``, ``output_1`` and so on.
+      preprocessing_step (Callable or tf.function, optional): Function that runs
+        the preprocessing step on the CPU device. This function is called just
+        before the Keras model. `preprocessing_step` and the Keras model are
+        exported together.
+        `preprocessing_step` output is directly passed to the Keras model
+        input queue.
+      preprocessing_step_signature (list or tuple, optional): A sequence of
+        `tf.TensorSpec` objects that describe the input arguments of the
+        `preprocessing_step` function.
+        If `preprocessing_step` is a `tf.function` and `input_signature` was
+        specified during `tf.function` creation then this argument can be None
+        and the signature will be captured directly from `preprocessing_step`.
+      postprocessing_step (Callable or tf.function, optional): Function that
+        runs the postprocessing step on the CPU. This function is called after
+        the Keras model. `postprocessing_step` and the Keras model are exported
+        together.
+        Tensors from the Keras model output queue are `postprocessing_step`
+        inputs.
+      postprocessing_step_signature (list or tuple, optional): A sequence of
+        `tf.TensorSpec` objects that describe the input arguments of the
+        `postprocessing_step` function.
+        If `postprocessing_step` is a `tf.function` and `input_signature` was
+        specified during `tf.function` creation then this argument can be None
+        and the signature will be captured directly from `postprocessing_step`.
+      purge_export_dir (Boolean, optional): If True, before starting the export,
+        the target directory is emptied. Otherwise no cleaning is performed and
+        if the target directory is not empty, the function fails with an error.
+      Returns:
+        tf.function: A reference to the same predict function that was exported
+        using the SavedModel format. This function uses the embedded runtime op
+        to run the executable that was included in the SavedModel's ``assets``
+        subfolder.
 
     Raises:
-      ValueError: If ``export_dir`` is not an empty directory.
+      ValueError: If ``export_dir`` is not an empty directory and
+        ``purge_export_dir`` is not set to True.
+      TypeError: If `preprocessing_step_signature` is neither a tuple, list of
+        `tf.TensorSpec` objects nor a `NoneType`.
+      TypeError: If `postprocessing_step_signature` is neither a tuple, list of
+        `tf.TensorSpec` objects nor a `NoneType`.
+      ValueError: If `preprocessing_step_signature` is an empty tuple or list.
+      ValueError: If `postprocessing_step_signature` is an empty tuple or list.
+      ValueError: If `preprocessing_step` is provided and
+        `preprocessing_step_signature` is not provided and `preprocessing_step`
+        is not a `tf.function` or is a `tf.function` but no `input_signature` is
+        provided.
+      ValueError: If `postprocessing_step` is provided and
+        `postprocessing_step_signature` is not provided and
+        `postprocessing_step` is not a `tf.function` or is a `tf.function` but
+        no `input_signature` is provided.
      """
-    if os.path.isdir(export_dir) and os.listdir(export_dir):
-      raise ValueError(
-          "Directory is not empty. Please specify an empty directory.")
+    # pylint: disable=protected-access
+    serving._validate_export_dir(export_dir, purge_export_dir)
 
     input_signature = self._get_input_signature(batch_size)
     defunc = self._wrap_model_call_for_serving(input_signature)
-    return serving._export_saved_model(  # pylint: disable=protected-access
-        defunc, export_dir, input_signature, output_names)
+
+    serving._validate_signatures(
+        predict_step=defunc,
+        predict_step_signature=input_signature,
+        preprocessing_step=preprocessing_step,
+        preprocessing_step_signature=preprocessing_step_signature,
+        postprocessing_step=postprocessing_step,
+        postprocessing_step_signature=postprocessing_step_signature)
+
+    if postprocessing_step is not None:
+      postprocessing_step_signature = serving._prepare_input_signature(
+          postprocessing_step, postprocessing_step_signature)
+
+    predict_step_signature = input_signature
+
+    if preprocessing_step is not None:
+      input_signature = serving._prepare_input_signature(
+          preprocessing_step, preprocessing_step_signature)
+
+    return serving._export_saved_model(defunc, export_dir, input_signature,
+                                       output_names, predict_step_signature,
+                                       preprocessing_step,
+                                       postprocessing_step_signature,
+                                       postprocessing_step)
