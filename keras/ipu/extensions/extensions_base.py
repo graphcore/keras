@@ -1960,7 +1960,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
         the preprocessing step on the CPU device. This function is called just
         before the Keras model. `preprocessing_step` and the Keras model are
         exported together.
-        `preprocessing_step` output is directly passed to the Keras model
+        The `preprocessing_step` output is passed directly to the Keras model
         input queue.
       preprocessing_step_signature (list or tuple, optional): A sequence of
         `tf.TensorSpec` objects that describe the input arguments of the
@@ -1972,8 +1972,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
         runs the postprocessing step on the CPU. This function is called after
         the Keras model. `postprocessing_step` and the Keras model are exported
         together.
-        Tensors from the Keras model output queue are `postprocessing_step`
-        inputs.
+        Tensors from the Keras model output queue are inputs to
+        `postprocessing_step`.
       postprocessing_step_signature (list or tuple, optional): A sequence of
         `tf.TensorSpec` objects that describe the input arguments of the
         `postprocessing_step` function.
@@ -1992,12 +1992,13 @@ class KerasExtensionBase(base_layer.KerasExtension):
     Raises:
       ValueError: If ``export_dir`` is not an empty directory and
         ``purge_export_dir`` is not set to True.
-      TypeError: If `preprocessing_step_signature` is neither a tuple, list of
+      TypeError: If `preprocessing_step_signature` is neither a tuple, a list of
         `tf.TensorSpec` objects nor a `NoneType`.
-      TypeError: If `postprocessing_step_signature` is neither a tuple, list of
-        `tf.TensorSpec` objects nor a `NoneType`.
-      ValueError: If `preprocessing_step_signature` is an empty tuple or list.
-      ValueError: If `postprocessing_step_signature` is an empty tuple or list.
+      TypeError: If `postprocessing_step_signature` is neither a tuple, a list
+        of `tf.TensorSpec` objects nor a `NoneType`.
+      ValueError: If `preprocessing_step_signature` is an empty tuple or a list.
+      ValueError: If `postprocessing_step_signature` is an empty tuple or a
+        list.
       ValueError: If `preprocessing_step` is provided and
         `preprocessing_step_signature` is not provided and `preprocessing_step`
         is not a `tf.function` or is a `tf.function` but no `input_signature` is
