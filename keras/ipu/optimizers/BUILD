@@ -46,7 +46,7 @@ py_library(
 
 tf_py_test(
     name = "als_optimizer_test",
-    size = "medium",
+    size = "large",
     srcs = ["als_optimizer_test.py"],
     python_version = "PY3",
     shard_count = 16,

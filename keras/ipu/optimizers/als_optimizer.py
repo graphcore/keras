@@ -31,6 +31,10 @@ from keras import backend as K
 from keras.ipu.optimizers.optimizer_v2_wrapper import _OptimizerV2Wrapper
 
 
+def _is_power_of_two(x):
+  return (x & (x - 1) == 0) and x != 0
+
+
 class ALSOptimizer(_OptimizerV2Wrapper):
   """An optimizer that automatically computes and applies
   a loss scaling factor (LSF) prior to gradient computation.
@@ -60,8 +64,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         opt,
         initial_loss_scaling_factor=10.0,
         update_frequency=3,
-        increase_factor=2.0,
-        decrease_factor=0.5)
+        increase_factor=2.0)
 
       x, t = some_dataset_fn()
       input_l = Input(x.shape[1])
@@ -84,8 +87,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         opt,
         initial_loss_scaling_factor=10.0,
         update_frequency=3,
-        increase_factor=2.0,
-        decrease_factor=0.5)
+        increase_factor=2.0)
 
       x, t = some_dataset_fn()
 
@@ -104,13 +106,14 @@ class ALSOptimizer(_OptimizerV2Wrapper):
   """
   def __init__(self,
                opt,
-               initial_loss_scaling_factor=1.0,
+               initial_loss_scaling_factor=1,
                update_frequency=8,
-               increase_factor=2.0,
-               decrease_factor=0.5,
+               increase_factor=2,
                max_loss_scaling_factor=32768,
                accumulate_statistics_over_update_period=True,
                ratio_threshold=10e-6,
+               captured_grads_only=False,
+               lpf_alpha=0.0,
                name="ALSOptimizer"):
     """Construct a new automatic loss scaling optimizer.
 
@@ -123,8 +126,6 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         Defaults to 8.
       increase_factor: The factor to scale the LSF by when increasing the LSF.
         Defaults to 2.
-      decrease_factor: The factor to scale the LSF by when decreasing the LSF.
-        Defaults to 0.5.
       max_loss_scaling_factor: The maximum value to which the LSF can increase.
         Defaults to 32768.
       accumulate_statistics_over_update_period: If true, statistics are
@@ -135,6 +136,23 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         reduction in LSF. Ratios not meeting this threshold will cause an
         increase in LSF.
         Defaults to 10e-6.
+      captured_grads_only: Whether to only use explicitly captured gradients (
+        layers wrapped with either
+        `keras.ipu.layers.capture_upstream_gradients.CaptureUpstreamGradients`
+        or
+        `keras.ipu.layers.capture_upstream_gradients.CaptureActivationGradients`
+      ).
+        Defaults to False.
+      lpf_alpha: Low Pass Filtering (exponential type) coefficient, used for
+        the collected gradient distributions when updating statistics. Setting
+        this value to 1.0 will result in no statistical update of the
+        ALSOptimizer state. Setting this value to 0.0 will result in no
+        retention of the previous ALSOptimizer statistical state following an
+        update period. Setting a lower value between these extrema should
+        present a "smoother" LSF update pattern over time, such that
+        `h(t) = alpha * h(t-1) + (1.0 - alpha) * h'(t)`, where h'(t) is the
+        updated distribution at time `t`.
+        Default is 0.0.
       name: Optional name prefix for the operation created when applying
         gradients.
         Defaults to "ALSOptimizer".
@@ -143,12 +161,13 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
     self.update_frequency = update_frequency
     self.increase_factor = increase_factor
-    self.decrease_factor = decrease_factor
     self.max_loss_scaling_factor = max_loss_scaling_factor
     self.ratio_threshold = ratio_threshold
     self.initial_loss_scaling_factor = initial_loss_scaling_factor
     self.accumulate_statistics_over_update_period = \
       accumulate_statistics_over_update_period
+    self.captured_grads_only = captured_grads_only
+    self.lpf_alpha = lpf_alpha
 
     # Start with no collected stats.
     self._hist = variables.Variable(initial_value=array_ops.zeros(
@@ -180,6 +199,10 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       return var.assign(val)
 
     return f(variable, value)
+
+  def _update_histogram(self, h):
+    new_h = self.lpf_alpha * self.histogram + (1.0 - self.lpf_alpha) * h
+    self._assign_var(self._hist, new_h)
 
   def _lsf_update_due(self):
     return math_ops.equal(
@@ -229,10 +252,13 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     grads_rescaled = []
 
     def do_update_and_rescale(g, h, rescaled):
-      # Add grads to histogram.
-      h = control_flow_ops.cond(update_hist,
-                                lambda: self._get_updated_hist(g, h),
-                                lambda: h)
+      # Add grads to histogram. If we are using only explicitly captured
+      # gradients (passed via apply_gradients 'captured_grads' kwarg), then
+      # skip the histogram update as these will be handled in apply_gradients.
+      if not self.captured_grads_only:
+        h = control_flow_ops.cond(update_hist,
+                                  lambda: self._get_updated_hist(g, h),
+                                  lambda: h)
 
       # Rescale grads.
       g_rescaled = g / math_ops.cast(self.loss_scaling_factor, g.dtype)
@@ -248,7 +274,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       hist = do_update_and_rescale(grads, hist, grads_rescaled)
 
     grads_unscaled = grads_rescaled if is_list else grads_rescaled[0]
-    self._assign_var(self._hist, hist)
+    self._update_histogram(hist)
     return grads_unscaled
 
   def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
@@ -321,6 +347,13 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     Raises:
       ValueError: If the grads_and_vars is malformed.
     """
+    if self.captured_grads_only and not captured_grads:
+      raise ValueError(
+          "ALSOptimizer has captured_grads_only set to True, but no gradients "
+          "have been captured. When using captured_grads_only=True, compatible "
+          "layers must be wrapped with CaptureUpstreamGradients or "
+          "CaptureActivationGradients layers.")
+
     def _get_updated_lsf(histogram):
       ratio = histogram[1] / math_ops.reduce_sum(histogram)
       lsf = control_flow_ops.cond(
@@ -351,7 +384,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         return hist
 
       for g in captured_grads.values():
-        if isinstance(g, list):
+        if isinstance(g, (list, tuple)):
           for gg in g:
             hist = self._get_updated_hist(gg, hist)
         else:
@@ -377,7 +410,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
                               lambda: self.update_counter + 1)
 
     self._assign_var(self._lsf, lsf)
-    self._assign_var(self._hist, hist)
+    self._update_histogram(hist)
     self._assign_var(self._n, n)
 
     # Apply grads.
@@ -390,19 +423,18 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     self._assign_var(self._lsf, self.initial_loss_scaling_factor)
 
   def get_config(self):
-    """
-    Returns the config of the `ALSOptimizer` instance.
+    """Returns the config of the `ALSOptimizer` instance.
     """
     config = super().get_config()
     config.update({
         'initial_loss_scaling_factor': self.initial_loss_scaling_factor,
         'update_frequency': self.update_frequency,
         'increase_factor': self.increase_factor,
-        'decrease_factor': self.decrease_factor,
         'max_loss_scaling_factor': self.max_loss_scaling_factor,
         'accumulate_statistics_over_update_period':
         self.accumulate_statistics_over_update_period,
-        'ratio_threshold': self.ratio_threshold
+        'ratio_threshold': self.ratio_threshold,
+        'captured_grads_only': self.captured_grads_only
     })
     return config
 
@@ -479,31 +511,18 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
   @increase_factor.setter
   def increase_factor(self, val):
-    dec = self.decrease_factor if hasattr(self, '_decrease_factor') else None
-
-    if val <= 0:
-      raise ValueError("increase_factor must be nonzero and positive")
-
-    if dec and val <= dec:
-      raise ValueError("increase_factor must be greater than decrease_factor")
+    if not _is_power_of_two(val):
+      raise ValueError("increase_factor must be a power of two")
 
     self._increase_factor = val
 
   @property
   def decrease_factor(self):
-    return self._decrease_factor
+    return 1.0 / self.increase_factor
 
   @decrease_factor.setter
-  def decrease_factor(self, val):
-    inc = self.increase_factor if hasattr(self, '_increase_factor') else None
-
-    if val <= 0:
-      raise ValueError("decrease_factor must be nonzero and positive")
-
-    if inc and val >= inc:
-      raise ValueError("decrease_factor must be less than increase_factor")
-
-    self._decrease_factor = val
+  def decrease_factor(self, _):
+    raise ValueError("decrease_factor is a read only property.")
 
   @property
   def clip_levels(self):
@@ -519,15 +538,16 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
   @initial_loss_scaling_factor.setter
   def initial_loss_scaling_factor(self, val):
-    if val <= 0:
-      raise ValueError(
-          "initial_loss_scaling_factor must be nonzero and positive")
+    if not _is_power_of_two(val):
+      raise ValueError("initial_loss_scaling_factor must be a power of two")
 
-    if val >= self.max_loss_scaling_factor:
+    if hasattr(self, '_max_loss_scaling_factor') and \
+      val >= self.max_loss_scaling_factor:
       raise ValueError("initial_loss_scaling_factor must be less "
                        "than max_loss_scaling_factor")
 
-    if val * self.increase_factor >= self.max_loss_scaling_factor:
+    if hasattr(self, '_max_loss_scaling_factor') and \
+      val * self.increase_factor >= self.max_loss_scaling_factor:
       raise ValueError(
           "initial_loss_scaling_factor x increase_factor must be less "
           "than max_loss_scaling_factor")
@@ -540,8 +560,20 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
   @max_loss_scaling_factor.setter
   def max_loss_scaling_factor(self, val):
-    if val <= 1:
-      raise ValueError("max_loss_scaling_factor must be greater than one")
+    if not _is_power_of_two(val):
+      raise ValueError("max_loss_scaling_factor must be a power of two")
+
+    if hasattr(self, '_max_loss_scaling_factor') and \
+      val >= self.max_loss_scaling_factor:
+      raise ValueError("initial_loss_scaling_factor must be less "
+                       "than max_loss_scaling_factor")
+
+    if hasattr(self, '_max_loss_scaling_factor') and \
+      val * self.increase_factor >= self.max_loss_scaling_factor:
+      if not _is_power_of_two(val):
+        raise ValueError(
+            "initial_loss_scaling_factor x increase_factor must be less "
+            "than max_loss_scaling_factor")
 
     self._max_loss_scaling_factor = val
 
@@ -567,3 +599,31 @@ class ALSOptimizer(_OptimizerV2Wrapper):
   @property
   def supports_captured_grads(self):
     return True
+
+  @property
+  def captured_grads_only(self):
+    return self._captured_grads_only
+
+  @captured_grads_only.setter
+  def captured_grads_only(self, val):
+    if not hasattr(self, '_captured_grads_only'):
+      self._captured_grads_only = val
+      return
+
+    if val != self.captured_grads_only:
+      self.reset()
+      self._captured_grads_only = val
+
+  @property
+  def lpf_alpha(self):
+    return self._lpf_alpha
+
+  @lpf_alpha.setter
+  def lpf_alpha(self, val):
+    if not hasattr(self, '_lpf_alpha'):
+      self._lpf_alpha = val
+      return
+
+    if val != self.lpf_alpha:
+      self.reset()
+      self._lpf_alpha = val

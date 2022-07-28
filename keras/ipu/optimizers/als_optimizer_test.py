@@ -74,25 +74,21 @@ OPTIMIZER_CASES = [{
 }]
 
 ALS_OPTIMIZER_KWARG_CASES = [{
-    'initial_loss_scaling_factor': 10.0,
+    'initial_loss_scaling_factor': 64,
     'update_frequency': 2,
-    'increase_factor': 2.0,
-    'decrease_factor': 0.5
+    'increase_factor': 2,
 }, {
-    'initial_loss_scaling_factor': 20.0,
+    'initial_loss_scaling_factor': 32,
     'update_frequency': 2,
-    'increase_factor': 1.33,
-    'decrease_factor': 0.66
+    'increase_factor': 4
 }, {
-    'initial_loss_scaling_factor': 30.0,
+    'initial_loss_scaling_factor': 32,
     'update_frequency': 2,
-    'increase_factor': 1.1,
-    'decrease_factor': 0.9
+    'increase_factor': 8
 }, {
-    'initial_loss_scaling_factor': 40.0,
+    'initial_loss_scaling_factor': 16,
     'update_frequency': 2,
-    'increase_factor': 4.0,
-    'decrease_factor': 0.25
+    'increase_factor': 16
 }]
 
 WRAPPER_CASES = [(None, 'no_wrapper'),
@@ -120,9 +116,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
   def testInvalidInitialLSF(self):
     opt = gradient_descent_v2.SGD(0.1)
     with self.assertRaisesRegex(
-        ValueError,
-        "initial_loss_scaling_factor must be nonzero and positive"):
-      _ = ALSOptimizer(opt, initial_loss_scaling_factor=0.0)
+        ValueError, "initial_loss_scaling_factor must be a power of two"):
+      _ = ALSOptimizer(opt, initial_loss_scaling_factor=5)
 
   def testInvalidUpdateFrequency(self):
     opt = gradient_descent_v2.SGD(0.1)
@@ -132,35 +127,9 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
   def testInvalidIncreaseFactor(self):
     opt = gradient_descent_v2.SGD(0.1)
-    with self.assertRaisesRegex(
-        ValueError, "increase_factor must be nonzero and positive"):
-      _ = ALSOptimizer(opt, increase_factor=0)
-
-  def testInvalidDecreaseFactor(self):
-    opt = gradient_descent_v2.SGD(0.1)
-    with self.assertRaisesRegex(
-        ValueError, "decrease_factor must be nonzero and positive"):
-      _ = ALSOptimizer(opt, decrease_factor=0)
-
-  def testInvalidIncreaseDecreaseFactors(self):
-    opt = gradient_descent_v2.SGD(0.1)
-    with self.assertRaisesRegex(
-        ValueError, "decrease_factor must be less than increase_factor"):
-      _ = ALSOptimizer(opt, decrease_factor=2, increase_factor=1)
-
-  def testSetTooHighDecreaseFactor(self):
-    opt = gradient_descent_v2.SGD(0.1)
-    opt_wrapper = ALSOptimizer(opt, increase_factor=2.0, decrease_factor=0.5)
-    with self.assertRaisesRegex(
-        ValueError, "decrease_factor must be less than increase_factor"):
-      opt_wrapper.decrease_factor = 3.0
-
-  def testSetTooLowIncreaseFactor(self):
-    opt = gradient_descent_v2.SGD(0.1)
-    opt_wrapper = ALSOptimizer(opt, increase_factor=2.0, decrease_factor=0.5)
-    with self.assertRaisesRegex(
-        ValueError, "increase_factor must be greater than decrease_factor"):
-      opt_wrapper.increase_factor = 0.1
+    with self.assertRaisesRegex(ValueError,
+                                "increase_factor must be a power of two"):
+      _ = ALSOptimizer(opt, increase_factor=3)
 
   def testCannotSetHistogram(self):
     opt = gradient_descent_v2.SGD(0.1)
@@ -190,11 +159,18 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                 "clip_levels is a read only property."):
       opt_wrapper.clip_levels = None
 
+  def testCannotSetDecreaseFactor(self):
+    opt = gradient_descent_v2.SGD(0.1)
+    with self.assertRaisesRegex(ValueError,
+                                "decrease_factor is a read only property."):
+      opt = ALSOptimizer(opt)
+      opt.decrease_factor = 2
+
   def testInvalidMaxLSF(self):
     opt = gradient_descent_v2.SGD(0.1)
     with self.assertRaisesRegex(
-        ValueError, "max_loss_scaling_factor must be greater than one"):
-      _ = ALSOptimizer(opt, max_loss_scaling_factor=1)
+        ValueError, "max_loss_scaling_factor must be a power of two"):
+      _ = ALSOptimizer(opt, max_loss_scaling_factor=5)
 
   def testRatioThresholdTooLow(self):
     opt = gradient_descent_v2.SGD(0.1)
@@ -216,8 +192,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         ValueError, "initial_loss_scaling_factor must be less than"
         " max_loss_scaling_factor"):
       _ = ALSOptimizer(opt,
-                       initial_loss_scaling_factor=4.0,
-                       max_loss_scaling_factor=3.0)
+                       initial_loss_scaling_factor=4,
+                       max_loss_scaling_factor=2)
 
   def testInitialLSFAndIncreaseFactorTooHigh(self):
     opt = gradient_descent_v2.SGD(0.1)
@@ -226,9 +202,9 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         "initial_loss_scaling_factor x increase_factor must be less "
         "than max_loss_scaling_factor"):
       _ = ALSOptimizer(opt,
-                       initial_loss_scaling_factor=1.0,
-                       increase_factor=4.0,
-                       max_loss_scaling_factor=4.0)
+                       initial_loss_scaling_factor=1,
+                       increase_factor=4,
+                       max_loss_scaling_factor=4)
 
   @parameterized.named_parameters(*TEST_CASES)
   def testSimpleTraining(self, optimizer_type, optimizer_args,
@@ -255,7 +231,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         return l
 
       model_losses = []
-      for _ in range(3):
+      for _ in range(10):
         res = strategy.run(f, args=[DATA, TARGETS])
         model_losses.append(res)
 
@@ -699,10 +675,9 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
     with strategy.scope():
       opt = gradient_descent_v2.SGD(0.01)
       opt_wrapper = ALSOptimizer(opt,
-                                 increase_factor=2.0,
-                                 decrease_factor=0.5,
-                                 initial_loss_scaling_factor=1.0,
-                                 max_loss_scaling_factor=16.0,
+                                 increase_factor=2,
+                                 initial_loss_scaling_factor=1,
+                                 max_loss_scaling_factor=16,
                                  update_frequency=1)
 
       v = variables.Variable(1.0, dtype=np.float16)
@@ -746,9 +721,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
     with strategy.scope():
       opt = gradient_descent_v2.SGD(0.01)
       opt_wrapper = ALSOptimizer(opt,
-                                 increase_factor=2.0,
-                                 decrease_factor=0.5,
-                                 initial_loss_scaling_factor=16.0,
+                                 increase_factor=2,
+                                 initial_loss_scaling_factor=16,
                                  update_frequency=1)
 
       v_init = np.finfo(np.float16).max
