@@ -198,6 +198,16 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     lsf = math_ops.cast(self.loss_scaling_factor, loss.dtype)
     return lsf * loss
 
+  def _get_updated_hist(self, g, h):
+    if g.dtype != dtypes.float16:
+      return h
+
+    g32 = array_ops.reshape(math_ops.cast(g, dtypes.float32), [-1])
+    return statistics_ops.histogram_update(h,
+                                           g32,
+                                           self.clip_levels,
+                                           absolute_of_input=True)
+
   def get_unscaled_gradients(self, grads):
     """Collects statistics from LSF scaled gradients and returns the
     same gradients unscaled.
@@ -218,19 +228,10 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
     grads_rescaled = []
 
-    def get_updated_hist(g, h):
-      if g.dtype != dtypes.float16:
-        return h
-
-      g32 = array_ops.reshape(math_ops.cast(g, dtypes.float32), [-1])
-      return statistics_ops.histogram_update(h,
-                                             g32,
-                                             self.clip_levels,
-                                             absolute_of_input=True)
-
     def do_update_and_rescale(g, h, rescaled):
       # Add grads to histogram.
-      h = control_flow_ops.cond(update_hist, lambda: get_updated_hist(g, h),
+      h = control_flow_ops.cond(update_hist,
+                                lambda: self._get_updated_hist(g, h),
                                 lambda: h)
 
       # Rescale grads.
@@ -295,7 +296,12 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
     return [self.get_unscaled_gradients(g) for g in scaled_grads]
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):  #pylint: disable=arguments-differ
+  def apply_gradients(  #pylint: disable=arguments-differ
+      self,
+      grads_and_vars,
+      captured_grads=None,
+      global_step=None,
+      name=None):
     """Apply gradients to variables and update the loss scale factor.
 
     Args:
@@ -303,6 +309,8 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         compute_gradients().
       global_step: Optional Variable to increment by one after the
         variables have been updated.
+      captured_grads: A dictionary of captured gradients to be used for
+        statistics collection when updating the ALS Loss Scale Factor.
       name: Optional name for the returned operation.  Default to the
         name passed to the Optimizer constructor.
 
@@ -337,15 +345,32 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     # Are we due an LSF update?
     do_lsf_update = self._lsf_update_due()
 
+    # If we have additional captured grads, add them to the histogram.
+    def _add_captured_grads(hist):
+      if not captured_grads:
+        return hist
+
+      for g in captured_grads.values():
+        if isinstance(g, list):
+          for gg in g:
+            hist = self._get_updated_hist(gg, hist)
+        else:
+          hist = self._get_updated_hist(g, hist)
+
+      return hist
+
+    hist = control_flow_ops.cond(do_lsf_update,
+                                 lambda: _add_captured_grads(self.histogram),
+                                 lambda: self.histogram)
+
     # Get the latest LSF.
-    lsf = control_flow_ops.cond(do_lsf_update,
-                                lambda: _get_updated_lsf(self.histogram),
+    lsf = control_flow_ops.cond(do_lsf_update, lambda: _get_updated_lsf(hist),
                                 lambda: self.loss_scaling_factor)
 
     # Reset the gradient histogram if we have performed an LSF update.
     hist = control_flow_ops.cond(do_lsf_update,
-                                 lambda: array_ops.zeros_like(self.histogram),
-                                 lambda: self.histogram)
+                                 lambda: array_ops.zeros_like(hist),
+                                 lambda: hist)
 
     # Update counter.
     n = control_flow_ops.cond(do_lsf_update, lambda: 1,
@@ -538,3 +563,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       raise ValueError(
           "ratio_threshold must be greater than zero and less than one")
     self._ratio_threshold = val
+
+  @property
+  def supports_captured_grads(self):
+    return True

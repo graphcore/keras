@@ -23,6 +23,7 @@ import tensorflow.compat.v2 as tf
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.ipu.config import IPUConfig
+from tensorflow.python.ipu.eager import backprop as ipu_backprop
 from tensorflow.python.ipu.ipu_strategy import IPUStrategyV1
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -31,6 +32,8 @@ from tensorflow.python.ops.losses import losses
 
 import keras
 from keras import layers
+from keras.ipu.layers import CaptureUpstreamGradients
+from keras.ipu.layers import CaptureActivationGradients
 from keras.ipu.optimizers import ALSOptimizer
 from keras.optimizer_v2 import adam as adam_v2
 from keras.optimizer_v2 import gradient_descent as gradient_descent_v2
@@ -41,6 +44,22 @@ OUTPUT_SHAPE = (BATCH_SIZE, 128)
 
 DATA = np.ones(shape=INPUT_SHAPE, dtype=np.float32)
 TARGETS = np.ones(shape=OUTPUT_SHAPE, dtype=np.float32)
+
+
+def dense_fn(dtype, wrapper_type=None):
+  wrapper = lambda x: x
+  if wrapper_type:
+    assert wrapper_type in (CaptureUpstreamGradients,
+                            CaptureActivationGradients)
+
+    wrapper = wrapper_type
+
+  return wrapper(
+      layers.Dense(OUTPUT_SHAPE[1],
+                   activation='relu',
+                   dtype=dtype,
+                   kernel_initializer=init_ops.constant_initializer(1.0)))
+
 
 OPTIMIZER_CASES = [{
     'testcase_name': 'Adam',
@@ -76,15 +95,21 @@ ALS_OPTIMIZER_KWARG_CASES = [{
     'decrease_factor': 0.25
 }]
 
+WRAPPER_CASES = [(None, 'no_wrapper'),
+                 (CaptureUpstreamGradients, 'CaptureUpstreamGradients'),
+                 (CaptureActivationGradients, 'CaptureActivationGradients')]
+
 
 def generate_test_cases():
   cases = []
   for opt_case in OPTIMIZER_CASES:
-    for n, als_case in enumerate(ALS_OPTIMIZER_KWARG_CASES):
-      c = copy.deepcopy(opt_case)
-      c['testcase_name'] += 'TestCase%d' % n
-      c['als_kwargs'] = als_case
-      cases.append(c)
+    for wrapper in WRAPPER_CASES:
+      for n, als_case in enumerate(ALS_OPTIMIZER_KWARG_CASES):
+        c = copy.deepcopy(opt_case)
+        c['testcase_name'] += f"TestCase{n}_{wrapper[1]}"
+        c['als_kwargs'] = als_case
+        c['wrapper_type'] = wrapper[0]
+        cases.append(c)
   return cases
 
 
@@ -207,7 +232,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(*TEST_CASES)
   def testSimpleTraining(self, optimizer_type, optimizer_args,
-                         optimizer_kwargs, als_kwargs):
+                         optimizer_kwargs, als_kwargs, wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -218,15 +243,11 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
       opt_wrapper = ALSOptimizer(opt, **als_kwargs)
 
-      dense = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))
+      dense = dense_fn(np.float16, wrapper_type=wrapper_type)
 
       @def_function.function(jit_compile=True)
       def f(x, t):
-        with GradientTape() as tape:
+        with ipu_backprop.GradientCaptureTape() as tape:
           y = dense(x)
           l = losses.mean_squared_error(labels=t, predictions=y)
 
@@ -246,7 +267,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(*TEST_CASES)
   def testDistributionWithSaturation(self, optimizer_type, optimizer_args,
-                                     optimizer_kwargs, als_kwargs):
+                                     optimizer_kwargs, als_kwargs,
+                                     wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -257,21 +279,12 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
       opt_wrapper = ALSOptimizer(opt, **als_kwargs)
 
-      dense0 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))
-
-      dense1 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float32,
-          kernel_initializer=init_ops.constant_initializer(1.0))
+      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
+      dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
       def f(x, t):
-        with GradientTape() as tape:
+        with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
@@ -319,7 +332,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(*TEST_CASES)
   def testDistributionWithoutSaturation(self, optimizer_type, optimizer_args,
-                                        optimizer_kwargs, als_kwargs):
+                                        optimizer_kwargs, als_kwargs,
+                                        wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -330,21 +344,12 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
       opt_wrapper = ALSOptimizer(opt, **als_kwargs)
 
-      dense0 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))
-
-      dense1 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float32,
-          kernel_initializer=init_ops.constant_initializer(1.0))
+      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
+      dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
       def f(x, t):
-        with GradientTape() as tape:
+        with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
@@ -392,7 +397,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(*TEST_CASES)
   def testDistributionWithSaturationNoStatAccum(self, optimizer_type,
                                                 optimizer_args,
-                                                optimizer_kwargs, als_kwargs):
+                                                optimizer_kwargs, als_kwargs,
+                                                wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -404,21 +410,12 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       opt_wrapper = ALSOptimizer(
           opt, **als_kwargs, accumulate_statistics_over_update_period=False)
 
-      dense0 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))
-
-      dense1 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float32,
-          kernel_initializer=init_ops.constant_initializer(1.0))
+      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
+      dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
       def f(x, t):
-        with GradientTape() as tape:
+        with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
@@ -466,7 +463,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
   def testDistributionWithoutSaturationNoStatAccum(self, optimizer_type,
                                                    optimizer_args,
                                                    optimizer_kwargs,
-                                                   als_kwargs):
+                                                   als_kwargs, wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -478,21 +475,12 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       opt_wrapper = ALSOptimizer(
           opt, **als_kwargs, accumulate_statistics_over_update_period=False)
 
-      dense0 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))
-
-      dense1 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float32,
-          kernel_initializer=init_ops.constant_initializer(1.0))
+      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
+      dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
       def f(x, t):
-        with GradientTape() as tape:
+        with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
@@ -537,7 +525,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(*TEST_CASES)
   def testSimpleTrainingKeras(self, optimizer_type, optimizer_args,
-                              optimizer_kwargs, als_kwargs):
+                              optimizer_kwargs, als_kwargs, wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -549,12 +537,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       opt_wrapper = ALSOptimizer(opt, **als_kwargs)
 
       input_layer = layers.Input(shape=DATA.shape[1])
-
-      dense = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))(input_layer)
+      dense = dense_fn(np.float16, wrapper_type)(input_layer)
 
       m = keras.Model(inputs=input_layer, outputs=dense)
       m.compile(optimizer=opt_wrapper, loss='mse')
@@ -569,7 +552,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(*TEST_CASES)
   def testDistributionWithSaturationKeras(self, optimizer_type, optimizer_args,
-                                          optimizer_kwargs, als_kwargs):
+                                          optimizer_kwargs, als_kwargs,
+                                          wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -582,17 +566,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
       input_layer = layers.Input(shape=DATA.shape[1])
 
-      dense0 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))(input_layer)
-
-      dense1 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float32,
-          kernel_initializer=init_ops.constant_initializer(1.0))(dense0)
+      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)(input_layer)
+      dense1 = dense_fn(np.float32)(dense0)
 
       m = keras.Model(inputs=input_layer, outputs=dense1)
       m.compile(optimizer=opt_wrapper, loss='mse')
@@ -648,7 +623,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(*TEST_CASES)
   def testDistributionWithoutSaturationKeras(self, optimizer_type,
                                              optimizer_args, optimizer_kwargs,
-                                             als_kwargs):
+                                             als_kwargs, wrapper_type):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
@@ -661,17 +636,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
 
       input_layer = layers.Input(shape=DATA.shape[1])
 
-      dense0 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float16,
-          kernel_initializer=init_ops.constant_initializer(1.0))(input_layer)
-
-      dense1 = layers.Dense(
-          OUTPUT_SHAPE[1],
-          activation='relu',
-          dtype=np.float32,
-          kernel_initializer=init_ops.constant_initializer(1.0))(dense0)
+      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)(input_layer)
+      dense1 = dense_fn(np.float32)(dense0)
 
       m = keras.Model(inputs=input_layer, outputs=dense1)
       m.compile(optimizer=opt_wrapper, loss='mse')
