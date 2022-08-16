@@ -34,7 +34,10 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = ["//keras/ipu/extensions"],
+    deps = [
+        "//keras/ipu/extensions",
+        "//keras/ipu/layers",
+    ],
 )
 
 tf_py_test(

@@ -18,6 +18,7 @@ IPU specific Keras Model extensions
 """
 import copy
 import enum
+import inspect
 import math
 import os
 import sys
@@ -36,6 +37,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import utils as ipu_utils
+from tensorflow.python.ipu.eager import backprop as ipu_backprop
 from tensorflow.python.ipu.ops import pipelining_ops
 from tensorflow.python.ipu import gradient_accumulation as ga
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
@@ -100,7 +102,19 @@ class _KerasOptimizerWrapper(tf_optimizer.Optimizer):
 
     return grads_and_vars
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):  # pylint: disable=unused-argument
+  def apply_gradients(  # pylint: disable=arguments-differ
+      self,
+      grads_and_vars,
+      captured_grads=None,
+      global_step=None,  # pylint: disable=unused-argument
+      name=None):  # pylint: disable=unused-argument
+    if captured_grads:
+      if not self.supports_captured_grads:
+        raise ValueError(
+            "captured_grads cannot be used as the wrapped optimizer "
+            "doesn't support it")
+      return self._optimizer.apply_gradients(grads_and_vars,
+                                             captured_grads=captured_grads)
     return self._optimizer.apply_gradients(grads_and_vars)
 
   def _apply_sparse(self, grad, var):
@@ -114,6 +128,10 @@ class _KerasOptimizerWrapper(tf_optimizer.Optimizer):
 
   def _resource_apply_sparse(self, grad, handle, indices):
     raise NotImplementedError()
+
+  @property
+  def supports_captured_grads(self):
+    return _optimizer_supports_captured_grads(self._optimizer)
 
 
 class _Mode(enum.Enum):
@@ -163,6 +181,15 @@ def _sanity_check_optimizer(opt):  #pylint: disable=missing-type-doc,missing-par
   raise ValueError(
       "When using Gradient Accumulation or Pipelining, the provided "
       "optimizer must not override OptimizerV2.minimize.")
+
+
+def _optimizer_supports_captured_grads(opt):
+  if hasattr(opt, 'supports_captured_grads'):
+    return opt.supports_captured_grads
+
+  spec = inspect.getfullargspec(opt.__class__.apply_gradients)
+  kw = spec.kwonlyargs
+  return kw and 'captured_grads' in kw
 
 
 class KerasExtensionBase(base_layer.KerasExtension):
@@ -498,11 +525,44 @@ class KerasExtensionBase(base_layer.KerasExtension):
     return extensions_util.merge_into_batch_dimension(results,
                                                       replication_factor)
 
+  def _ipu_train_step(self, opt):
+    def _ipu_train_step_impl(self, optimizer, data):
+      # Implementation of `Model.train_step` with support for:
+      # - Gradient Accumulation (via GradientAccumulationOptimizer).
+      # - Gradient Capture (via GradientCollectionContext) and
+      #   extended functionality for those optimizers that support
+      #   the captured_grads kwarg to apply_gradients (such as ALS).
+      data = data_adapter.expand_1d(data)
+      x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+      with ipu_backprop.GradientCaptureContext() as gcc:
+        y_pred = self(x, training=True)  # pylint: disable=not-callable
+        loss = self.compiled_loss(y,
+                                  y_pred,
+                                  sample_weight,
+                                  regularization_losses=self.losses)
+        self.compiled_metrics.update_state(y, y_pred, sample_weight)
+        grads_and_vars = optimizer.compute_gradients(loss,
+                                                     self.trainable_variables)
+
+        captured_grads = gcc.captured_gradients
+        if captured_grads and _optimizer_supports_captured_grads(optimizer):
+          optimizer.apply_gradients(grads_and_vars,
+                                    captured_grads=captured_grads)
+        else:
+          optimizer.apply_gradients(grads_and_vars)
+
+      return {m.name: m.result() for m in self.metrics}
+
+    return partial(_ipu_train_step_impl, self, opt)
+
   def _make_single_ipu_train_function(self):
+    optimizer = _KerasOptimizerWrapper(self, self.optimizer)
+    train_step = self._ipu_train_step(optimizer)
+
     @tf_function(jit_compile=True)
     def train_function(steps_per_execution, iterator, outfeed):
       for _ in tf.range(steps_per_execution):
-        outfeed.enqueue(self.train_step(next(iterator)))
+        outfeed.enqueue(train_step(next(iterator)))
 
     return train_function
 
@@ -519,20 +579,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
           reduction_method=self._gradient_accumulation_reduction_method,
           **self._gradient_accumulation_optimizer_kwargs)
 
-    def train_step(data):
-      # Implementation of `Model.train_step` with gradient accumulation support.
-      data = data_adapter.expand_1d(data)
-      x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-      y_pred = self(x, training=True)  # pylint: disable=not-callable
-      loss = self.compiled_loss(y,
-                                y_pred,
-                                sample_weight,
-                                regularization_losses=self.losses)
-      self.compiled_metrics.update_state(y, y_pred, sample_weight)
-      grads_and_vars = optimizer.compute_gradients(loss,
-                                                   self.trainable_variables)
-      optimizer.apply_gradients(grads_and_vars)
-      return {m.name: m.result() for m in self.metrics}
+    train_step = self._ipu_train_step(optimizer)
 
     @tf_function(jit_compile=True)
     def train_function(steps_per_execution, iterator, outfeed):
@@ -747,11 +794,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
       # the loss.
       outfeed_mask = [True, False] if training else None
 
-      def optimizer_function(loss, *_):
+      def optimizer_function(gcc, loss, *_):
         optimizer = _KerasOptimizerWrapper(self, self.optimizer)
-        return pipelining_ops.OptimizerFunctionOutput(optimizer, loss)
-
-      opt = optimizer_function if add_optimizer else None
+        return pipelining_ops.OptimizerFunctionOutput(
+            optimizer, loss, gradient_capture_context=gcc)
 
       accumulate_outfeed = self._pipelining_accumulate_outfeed and (
           add_loss or add_optimizer)
@@ -762,19 +808,22 @@ class KerasExtensionBase(base_layer.KerasExtension):
                               inputs=[],
                               build_graph=True,
                               training=training):
-        pipelining_ops.pipeline(
-            computational_stages,
-            gradient_accumulation_count=gradient_accumulation_steps_per_replica,
-            repeat_count=iterations,
-            device_mapping=self._pipelining_device_mapping,
-            accumulate_outfeed=accumulate_outfeed,
-            inputs=[],
-            infeed_queue=iterator._infeed_queue,  # pylint: disable=protected-access
-            outfeed_queue=outfeed,
-            optimizer_function=opt,
-            outfeed_mask=outfeed_mask,
-            reduction_method=self._gradient_accumulation_reduction_method,
-            **self._pipelining_kwargs)
+        with ipu_backprop.GradientCaptureContext() as gcc:
+          opt = partial(optimizer_function, gcc) if add_optimizer else None
+          pipelining_ops.pipeline(
+              computational_stages,
+              gradient_accumulation_count=
+              gradient_accumulation_steps_per_replica,
+              repeat_count=iterations,
+              device_mapping=self._pipelining_device_mapping,
+              accumulate_outfeed=accumulate_outfeed,
+              inputs=[],
+              infeed_queue=iterator._infeed_queue,  # pylint: disable=protected-access
+              outfeed_queue=outfeed,
+              optimizer_function=opt,
+              outfeed_mask=outfeed_mask,
+              reduction_method=self._gradient_accumulation_reduction_method,
+              **self._pipelining_kwargs)
 
     return pipeline_function
 

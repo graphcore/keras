@@ -1308,10 +1308,9 @@ class TrainingTest(keras_parameterized.TestCase):
     model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     inputs = np.random.normal(size=(64, 4))
     targets = np.random.normal(size=(64, 4))
-    old_kernel = model.get_weights()[1]
-    model.fit(inputs, targets)
-    new_kernel = model.get_weights()[1]
-    self.assertNotAllEqual(old_kernel, new_kernel)
+
+    with self.assertRaisesRegex(ValueError, "has `None` for gradient."):
+      model.fit(inputs, targets)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True,
                                            always_skip_eager=True)
