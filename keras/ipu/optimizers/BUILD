@@ -49,7 +49,7 @@ tf_py_test(
     size = "large",
     srcs = ["als_optimizer_test.py"],
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 32,
     deps = [
         "//:expect_absl_installed",
         "//:expect_numpy_installed",

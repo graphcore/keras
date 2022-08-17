@@ -14,6 +14,7 @@
 # =============================================================================
 
 import copy
+import itertools
 
 from absl.testing import parameterized
 
@@ -22,6 +23,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager.backprop import GradientTape
+from tensorflow.python.ipu import loops
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu.eager import backprop as ipu_backprop
 from tensorflow.python.ipu.ipu_strategy import IPUStrategyV1
@@ -35,12 +37,14 @@ from keras import layers
 from keras.ipu.layers import CaptureUpstreamGradients
 from keras.ipu.layers import CaptureActivationGradients
 from keras.ipu.optimizers import ALSOptimizer
+from keras.ipu.optimizers import ALSOptimizerGradientAccumulationWrapper
 from keras.optimizer_v2 import adam as adam_v2
 from keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 
-BATCH_SIZE = 8
-INPUT_SHAPE = (BATCH_SIZE, 4)
-OUTPUT_SHAPE = (BATCH_SIZE, 128)
+NUM_BATCHES = 4
+BATCH_SIZE = 64
+INPUT_SHAPE = (NUM_BATCHES * BATCH_SIZE, 4)
+OUTPUT_SHAPE = (NUM_BATCHES * BATCH_SIZE, 128)
 
 DATA = np.ones(shape=INPUT_SHAPE, dtype=np.float32)
 TARGETS = np.ones(shape=OUTPUT_SHAPE, dtype=np.float32)
@@ -95,21 +99,33 @@ WRAPPER_CASES = [(None, 'no_wrapper'),
                  (CaptureUpstreamGradients, 'CaptureUpstreamGradients'),
                  (CaptureActivationGradients, 'CaptureActivationGradients')]
 
+GRADIENT_ACCUMULATION_CASES = [1, 2]
+
 
 def generate_test_cases():
+  case_cartesian_product = itertools.product(OPTIMIZER_CASES,
+                                             ALS_OPTIMIZER_KWARG_CASES,
+                                             WRAPPER_CASES,
+                                             GRADIENT_ACCUMULATION_CASES)
+
   cases = []
-  for opt_case in OPTIMIZER_CASES:
-    for wrapper in WRAPPER_CASES:
-      for n, als_case in enumerate(ALS_OPTIMIZER_KWARG_CASES):
-        c = copy.deepcopy(opt_case)
-        c['testcase_name'] += f"TestCase{n}_{wrapper[1]}"
-        c['als_kwargs'] = als_case
-        c['wrapper_type'] = wrapper[0]
-        cases.append(c)
+  n = 0
+  for opt_case, als_case, wrapper_case, ga_case in case_cartesian_product:
+    c = copy.deepcopy(opt_case)
+    c['testcase_name'] += f"TestCase{n}_{wrapper_case[1]}_GA{ga_case}"
+    c['als_kwargs'] = als_case
+    c['wrapper_type'] = wrapper_case[0]
+    c['ga_steps_per_replica'] = ga_case
+    cases.append(c)
+    n += 1
   return cases
 
 
 TEST_CASES = generate_test_cases()
+
+
+def num_iters(update_freq, ga_steps):
+  return update_freq // ga_steps - int(ga_steps == 1)
 
 
 class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
@@ -207,32 +223,59 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                        max_loss_scaling_factor=4)
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testSimpleTraining(self, optimizer_type, optimizer_args,
-                         optimizer_kwargs, als_kwargs, wrapper_type):
+  def testSimpleTraining(self,
+                         optimizer_type,
+                         optimizer_args,
+                         optimizer_kwargs,
+                         als_kwargs,
+                         wrapper_type,
+                         ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
-      opt_wrapper = ALSOptimizer(opt, **als_kwargs)
+      opt_wrapper = ALSOptimizer(opt,
+                                 **als_kwargs,
+                                 captured_grads_only=captured_only)
+
+      if ga_steps_per_replica > 1:
+        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
+            opt_wrapper, ga_steps_per_replica)
 
       dense = dense_fn(np.float16, wrapper_type=wrapper_type)
 
       @def_function.function(jit_compile=True)
-      def f(x, t):
+      def f(x, t, _):
         with ipu_backprop.GradientCaptureTape() as tape:
           y = dense(x)
           l = losses.mean_squared_error(labels=t, predictions=y)
 
-        opt_wrapper.minimize(l, dense.trainable_variables, tape=tape)
+        v = dense.trainable_weights
+        if ga_steps_per_replica == 1:
+          g = opt_wrapper.get_gradients(l, v)
+          gv = list(zip(g, v))
+        else:
+          gv = opt_wrapper.compute_gradients(l, v)
+        opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
+        return x, t, l
+
+      @def_function.function(jit_compile=True)
+      def loop_fn(x, t):
+        _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
         return l
 
       model_losses = []
       for _ in range(10):
-        res = strategy.run(f, args=[DATA, TARGETS])
+        res = strategy.run(loop_fn, args=[DATA, TARGETS])
         model_losses.append(res)
 
     last_loss = float('inf')
@@ -242,31 +285,51 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       last_loss = r
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testDistributionWithSaturation(self, optimizer_type, optimizer_args,
-                                     optimizer_kwargs, als_kwargs,
-                                     wrapper_type):
+  def testDistributionWithSaturation(self,
+                                     optimizer_type,
+                                     optimizer_args,
+                                     optimizer_kwargs,
+                                     als_kwargs,
+                                     wrapper_type,
+                                     ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
-      opt_wrapper = ALSOptimizer(opt, **als_kwargs)
+      opt_wrapper = ALSOptimizer(opt,
+                                 **als_kwargs,
+                                 captured_grads_only=captured_only)
+
+      if ga_steps_per_replica > 1:
+        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
+            opt_wrapper, ga_steps_per_replica)
 
       dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
       dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
-      def f(x, t):
+      def f(x, t, _):
         with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
         v = dense0.trainable_variables + dense1.trainable_variables
-        opt_wrapper.minimize(l, v, tape=tape)
-        return l
+        if ga_steps_per_replica == 1:
+          g = opt_wrapper.get_gradients(l, v)
+          gv = list(zip(g, v))
+        else:
+          gv = opt_wrapper.compute_gradients(l, v)
+        opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
+        return x, t, l
 
       @def_function.function(jit_compile=True)
       def g():
@@ -276,9 +339,15 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      targets_huge = TARGETS * np.finfo(np.float16).max
-      for _ in range(opt_wrapper.update_frequency - 1):
-        l = strategy.run(f, args=[DATA, targets_huge])
+      @def_function.function(jit_compile=True)
+      def loop_fn(x, t):
+        _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
+        return l
+
+      targets_huge = TARGETS * np.finfo(np.float16).max * 10
+      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
+      for _ in range(n):
+        l = strategy.run(loop_fn, args=[DATA, targets_huge])
         self.assertTrue(np.isfinite(l))
 
         # We expect gradients only for the float16 dense layer to be taken into
@@ -292,7 +361,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF decreases after the next epoch.
-      _ = strategy.run(f, args=[DATA, targets_huge])
+      _ = strategy.run(loop_fn, args=[DATA, targets_huge])
       lsf = strategy.run(g)
       self.assertLess(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -307,31 +376,51 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       self.assertAllEqual(hist, np.zeros_like(hist))
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testDistributionWithoutSaturation(self, optimizer_type, optimizer_args,
-                                        optimizer_kwargs, als_kwargs,
-                                        wrapper_type):
+  def testDistributionWithoutSaturation(self,
+                                        optimizer_type,
+                                        optimizer_args,
+                                        optimizer_kwargs,
+                                        als_kwargs,
+                                        wrapper_type,
+                                        ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
-      opt_wrapper = ALSOptimizer(opt, **als_kwargs)
+      opt_wrapper = ALSOptimizer(opt,
+                                 **als_kwargs,
+                                 captured_grads_only=captured_only)
+
+      if ga_steps_per_replica > 1:
+        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
+            opt_wrapper, ga_steps_per_replica)
 
       dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
       dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
-      def f(x, t):
+      def f(x, t, _):
         with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
         v = dense0.trainable_variables + dense1.trainable_variables
-        opt_wrapper.minimize(l, v, tape=tape)
-        return l
+        if ga_steps_per_replica == 1:
+          g = opt_wrapper.get_gradients(l, v)
+          gv = list(zip(g, v))
+        else:
+          gv = opt_wrapper.compute_gradients(l, v)
+        opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
+        return x, t, l
 
       @def_function.function(jit_compile=True)
       def g():
@@ -341,8 +430,14 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      for _ in range(opt_wrapper.update_frequency - 1):
-        l = strategy.run(f, args=[DATA, TARGETS])
+      @def_function.function(jit_compile=True)
+      def loop_fn(x, t):
+        _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
+        return l
+
+      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
+      for _ in range(n):
+        l = strategy.run(loop_fn, args=[DATA, TARGETS])
         self.assertTrue(np.isfinite(l))
 
         # We expect gradients only for the float16 dense layer to be taken into
@@ -356,7 +451,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF increases after the next epoch.
-      _ = strategy.run(f, args=[DATA, TARGETS])
+      _ = strategy.run(loop_fn, args=[DATA, TARGETS])
       lsf = strategy.run(g)
       self.assertGreater(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -371,33 +466,53 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       self.assertAllEqual(hist, np.zeros_like(hist))
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testDistributionWithSaturationNoStatAccum(self, optimizer_type,
+  def testDistributionWithSaturationNoStatAccum(self,
+                                                optimizer_type,
                                                 optimizer_args,
-                                                optimizer_kwargs, als_kwargs,
-                                                wrapper_type):
+                                                optimizer_kwargs,
+                                                als_kwargs,
+                                                wrapper_type,
+                                                ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
       opt_wrapper = ALSOptimizer(
-          opt, **als_kwargs, accumulate_statistics_over_update_period=False)
+          opt,
+          **als_kwargs,
+          accumulate_statistics_over_update_period=False,
+          captured_grads_only=captured_only)
+
+      if ga_steps_per_replica > 1:
+        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
+            opt_wrapper, ga_steps_per_replica)
 
       dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
       dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
-      def f(x, t):
+      def f(x, t, _):
         with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
         v = dense0.trainable_variables + dense1.trainable_variables
-        opt_wrapper.minimize(l, v, tape=tape)
-        return l
+        if ga_steps_per_replica == 1:
+          g = opt_wrapper.get_gradients(l, v)
+          gv = list(zip(g, v))
+        else:
+          gv = opt_wrapper.compute_gradients(l, v)
+        opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
+        return x, t, l
 
       @def_function.function(jit_compile=True)
       def g():
@@ -407,9 +522,15 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      targets_huge = TARGETS * np.finfo(np.float16).max
-      for _ in range(opt_wrapper.update_frequency - 1):
-        l = strategy.run(f, args=[DATA, targets_huge])
+      @def_function.function(jit_compile=True)
+      def loop_fn(x, t):
+        _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
+        return l
+
+      targets_huge = TARGETS * np.finfo(np.float16).max * 10
+      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
+      for _ in range(n):
+        l = strategy.run(loop_fn, args=[DATA, targets_huge])
         self.assertTrue(np.isfinite(l))
 
         # In this loop, we expect the histogram to always be zeros.
@@ -421,7 +542,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF decreases after the next epoch.
-      _ = strategy.run(f, args=[DATA, targets_huge])
+      _ = strategy.run(loop_fn, args=[DATA, targets_huge])
       lsf = strategy.run(g)
       self.assertLess(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -436,33 +557,53 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       self.assertAllEqual(hist, np.zeros_like(hist))
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testDistributionWithoutSaturationNoStatAccum(self, optimizer_type,
+  def testDistributionWithoutSaturationNoStatAccum(self,
+                                                   optimizer_type,
                                                    optimizer_args,
                                                    optimizer_kwargs,
-                                                   als_kwargs, wrapper_type):
+                                                   als_kwargs,
+                                                   wrapper_type,
+                                                   ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
       opt_wrapper = ALSOptimizer(
-          opt, **als_kwargs, accumulate_statistics_over_update_period=False)
+          opt,
+          **als_kwargs,
+          accumulate_statistics_over_update_period=False,
+          captured_grads_only=captured_only)
+
+      if ga_steps_per_replica > 1:
+        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
+            opt_wrapper, ga_steps_per_replica)
 
       dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
       dense1 = dense_fn(np.float32)
 
       @def_function.function(jit_compile=True)
-      def f(x, t):
+      def f(x, t, _):
         with ipu_backprop.GradientCaptureTape() as tape:
           y = dense1(dense0(x))
           l = losses.mean_squared_error(labels=t, predictions=y)
 
         v = dense0.trainable_variables + dense1.trainable_variables
-        opt_wrapper.minimize(l, v, tape=tape)
-        return l
+        if ga_steps_per_replica == 1:
+          g = opt_wrapper.get_gradients(l, v)
+          gv = list(zip(g, v))
+        else:
+          gv = opt_wrapper.compute_gradients(l, v)
+        opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
+        return x, t, l
 
       @def_function.function(jit_compile=True)
       def g():
@@ -472,8 +613,14 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      for _ in range(opt_wrapper.update_frequency - 1):
-        l = strategy.run(f, args=[DATA, TARGETS])
+      @def_function.function(jit_compile=True)
+      def loop_fn(x, t):
+        _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
+        return l
+
+      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
+      for _ in range(n):
+        l = strategy.run(loop_fn, args=[DATA, TARGETS])
         self.assertTrue(np.isfinite(l))
 
         # In this loop, we expect the histogram to always be zeros.
@@ -485,7 +632,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF increases after the next epoch.
-      _ = strategy.run(f, args=[DATA, TARGETS])
+      _ = strategy.run(loop_fn, args=[DATA, TARGETS])
       lsf = strategy.run(g)
       self.assertGreater(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -500,25 +647,48 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       self.assertAllEqual(hist, np.zeros_like(hist))
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testSimpleTrainingKeras(self, optimizer_type, optimizer_args,
-                              optimizer_kwargs, als_kwargs, wrapper_type):
+  def testSimpleTrainingKeras(self,
+                              optimizer_type,
+                              optimizer_args,
+                              optimizer_kwargs,
+                              als_kwargs,
+                              wrapper_type,
+                              ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
-      opt_wrapper = ALSOptimizer(opt, **als_kwargs)
+      opt_wrapper = ALSOptimizer(opt,
+                                 **als_kwargs,
+                                 captured_grads_only=captured_only)
 
       input_layer = layers.Input(shape=DATA.shape[1])
       dense = dense_fn(np.float16, wrapper_type)(input_layer)
 
       m = keras.Model(inputs=input_layer, outputs=dense)
-      m.compile(optimizer=opt_wrapper, loss='mse')
 
-      history = m.fit(DATA, TARGETS, epochs=3, batch_size=1, verbose=False)
+      m.compile(optimizer=opt_wrapper,
+                loss='mse',
+                steps_per_execution=ga_steps_per_replica)
+
+      m.set_gradient_accumulation_options(
+          gradient_accumulation_steps_per_replica=ga_steps_per_replica)
+
+      history = m.fit(DATA,
+                      TARGETS,
+                      epochs=3,
+                      batch_size=BATCH_SIZE,
+                      steps_per_epoch=ga_steps_per_replica,
+                      verbose=False)
 
     last_loss = float('inf')
     for l in history.history['loss']:
@@ -527,18 +697,29 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       last_loss = l
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testDistributionWithSaturationKeras(self, optimizer_type, optimizer_args,
-                                          optimizer_kwargs, als_kwargs,
-                                          wrapper_type):
+  def testDistributionWithSaturationKeras(self,
+                                          optimizer_type,
+                                          optimizer_args,
+                                          optimizer_kwargs,
+                                          als_kwargs,
+                                          wrapper_type,
+                                          ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
-      opt_wrapper = ALSOptimizer(opt, **als_kwargs)
+      opt_wrapper = ALSOptimizer(opt,
+                                 **als_kwargs,
+                                 captured_grads_only=captured_only)
 
       input_layer = layers.Input(shape=DATA.shape[1])
 
@@ -546,7 +727,13 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       dense1 = dense_fn(np.float32)(dense0)
 
       m = keras.Model(inputs=input_layer, outputs=dense1)
-      m.compile(optimizer=opt_wrapper, loss='mse')
+
+      m.compile(optimizer=opt_wrapper,
+                loss='mse',
+                steps_per_execution=ga_steps_per_replica)
+
+      m.set_gradient_accumulation_options(
+          gradient_accumulation_steps_per_replica=ga_steps_per_replica)
 
       @def_function.function(jit_compile=True)
       def g():
@@ -556,12 +743,14 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      targets_huge = TARGETS * np.finfo(np.float16).max
-      for _ in range(opt_wrapper.update_frequency - 1):
+      targets_huge = TARGETS * np.finfo(np.float16).max * 10
+      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
+      for _ in range(n):
         history = m.fit(DATA,
                         targets_huge,
                         epochs=1,
                         batch_size=BATCH_SIZE,
+                        steps_per_epoch=ga_steps_per_replica,
                         verbose=False)
 
         self.assertTrue(np.isfinite(history.history['loss'][0]))
@@ -581,6 +770,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                       targets_huge,
                       epochs=1,
                       batch_size=BATCH_SIZE,
+                      steps_per_epoch=ga_steps_per_replica,
                       verbose=False)
 
       lsf = strategy.run(g)
@@ -597,18 +787,29 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       self.assertAllEqual(hist, np.zeros_like(hist))
 
   @parameterized.named_parameters(*TEST_CASES)
-  def testDistributionWithoutSaturationKeras(self, optimizer_type,
-                                             optimizer_args, optimizer_kwargs,
-                                             als_kwargs, wrapper_type):
+  def testDistributionWithoutSaturationKeras(self,
+                                             optimizer_type,
+                                             optimizer_args,
+                                             optimizer_kwargs,
+                                             als_kwargs,
+                                             wrapper_type,
+                                             ga_steps_per_replica=1):
     cfg = IPUConfig()
     cfg.ipu_model.compile_ipu_code = False
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
+    # In these tests, if we are using CaptureUpstreamGradients then we'll end
+    # up with duplicate gradients in the histogram. So we run ALS using only
+    # the captured gradients.
+    captured_only = wrapper_type == CaptureUpstreamGradients
+
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
-      opt_wrapper = ALSOptimizer(opt, **als_kwargs)
+      opt_wrapper = ALSOptimizer(opt,
+                                 **als_kwargs,
+                                 captured_grads_only=captured_only)
 
       input_layer = layers.Input(shape=DATA.shape[1])
 
@@ -616,7 +817,13 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       dense1 = dense_fn(np.float32)(dense0)
 
       m = keras.Model(inputs=input_layer, outputs=dense1)
-      m.compile(optimizer=opt_wrapper, loss='mse')
+
+      m.compile(optimizer=opt_wrapper,
+                loss='mse',
+                steps_per_execution=ga_steps_per_replica)
+
+      m.set_gradient_accumulation_options(
+          gradient_accumulation_steps_per_replica=ga_steps_per_replica)
 
       @def_function.function(jit_compile=True)
       def g():
@@ -626,11 +833,13 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      for _ in range(opt_wrapper.update_frequency - 1):
+      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
+      for _ in range(n):
         history = m.fit(DATA,
                         TARGETS,
                         epochs=1,
                         batch_size=BATCH_SIZE,
+                        steps_per_epoch=ga_steps_per_replica,
                         verbose=False)
 
         self.assertTrue(np.isfinite(history.history['loss'][0]))
@@ -650,6 +859,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                       TARGETS,
                       epochs=1,
                       batch_size=BATCH_SIZE,
+                      steps_per_epoch=ga_steps_per_replica,
                       verbose=False)
 
       lsf = strategy.run(g)

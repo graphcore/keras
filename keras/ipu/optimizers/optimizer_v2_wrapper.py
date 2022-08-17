@@ -136,14 +136,8 @@ class _OptimizerV2Wrapper(OptimizerV2):
     """
     return self._opt._transform_gradients(grads_and_vars)  # pylint: disable=protected-access
 
-  def get_gradients(self, loss, params):
-    """Default wrapper that calls the wrapped optimizer's `get_gradients`.
-
-    Args:
-      loss: A loss to compute gradients of.
-      params: A list of variables to compute gradients with respect to.
-    """
-    return self._opt.get_gradients(loss, params)  # pylint: disable=protected-access
+  def _get_gradients(self, tape, loss, var_list, grad_loss=None):
+    return self._opt._get_gradients(tape, loss, var_list, grad_loss)  # pylint: disable=protected-access
 
   def _resource_apply_dense(self, grad, handle, apply_state):
     """Default wrapper that calls the wrapped optimizer's `_resource_apply_dense`.

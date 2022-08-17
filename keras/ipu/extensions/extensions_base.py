@@ -50,6 +50,7 @@ from keras.ipu.extensions import data_adapter as ipu_data_adapter
 from keras.ipu.extensions import polling_thread
 from keras.ipu.extensions import extensions_util
 from keras.ipu.extensions import data_feed_manager
+from keras.ipu.optimizers import als_optimizer as als
 from keras.engine import base_layer_utils
 from keras.engine import base_layer
 from keras.engine import input_spec
@@ -189,7 +190,7 @@ def _optimizer_supports_captured_grads(opt):
 
   spec = inspect.getfullargspec(opt.__class__.apply_gradients)
   kw = spec.kwonlyargs
-  return kw and 'captured_grads' in kw
+  return bool(kw and 'captured_grads' in kw)
 
 
 class KerasExtensionBase(base_layer.KerasExtension):
@@ -570,14 +571,21 @@ class KerasExtensionBase(base_layer.KerasExtension):
       self, gradient_accumulation_steps_per_replica):
     _sanity_check_optimizer(self.optimizer)
 
-    optimizer = _KerasOptimizerWrapper(self, self.optimizer)
-
-    optimizer = \
-      gradient_accumulation_optimizer.GradientAccumulationOptimizerV2(
-          optimizer,
-          gradient_accumulation_steps_per_replica,
+    if isinstance(self.optimizer, als.ALSOptimizer):
+      optimizer = als.ALSOptimizerGradientAccumulationWrapper(
+          self.optimizer,
+          num_mini_batches=gradient_accumulation_steps_per_replica,
           reduction_method=self._gradient_accumulation_reduction_method,
           **self._gradient_accumulation_optimizer_kwargs)
+    else:
+      optimizer = _KerasOptimizerWrapper(self, self.optimizer)
+
+      optimizer = \
+        gradient_accumulation_optimizer.GradientAccumulationOptimizerV2(
+            optimizer,
+            gradient_accumulation_steps_per_replica,
+            reduction_method=self._gradient_accumulation_reduction_method,
+            **self._gradient_accumulation_optimizer_kwargs)
 
     train_step = self._ipu_train_step(optimizer)
 

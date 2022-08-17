@@ -22,10 +22,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ipu.ops import statistics_ops
+from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer as ga
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.training import optimizer as tf_optimizer
 
 from keras import backend as K
 from keras.ipu.optimizers.optimizer_v2_wrapper import _OptimizerV2Wrapper
@@ -200,13 +202,35 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
     return f(variable, value)
 
-  def _update_histogram(self, h):
-    new_h = self.lpf_alpha * self.histogram + (1.0 - self.lpf_alpha) * h
+  def _update_histogram(self, h, skip_lpf=False):
+    new_h = control_flow_ops.cond(
+        ops.convert_to_tensor(skip_lpf), lambda: h,
+        lambda: self.lpf_alpha * self.histogram + (1.0 - self.lpf_alpha) * h)
+
     self._assign_var(self._hist, new_h)
 
   def _lsf_update_due(self):
     return math_ops.equal(
         math_ops.floormod(self.update_counter, self.update_frequency), 0)
+
+  def _should_update_hist(self):
+    update_lsf = self._lsf_update_due()
+    return math_ops.logical_or(
+        ops.convert_to_tensor(self.accumulate_statistics_over_update_period),
+        update_lsf)
+
+  def _add_captured_grads(self, hist, captured_grads=None):
+    if not captured_grads:
+      return hist
+
+    for g in captured_grads.values():
+      if isinstance(g, (list, tuple)):
+        for gg in g:
+          hist = self._get_updated_hist(gg, hist)
+      else:
+        hist = self._get_updated_hist(g, hist)
+
+    return hist
 
   def get_scaled_loss(self, loss):
     """Applies the current loss scaling factor to a given loss.
@@ -242,13 +266,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     Returns:
       The unscaled gradients.
     """
-    update_hist = self._lsf_update_due()
-    update_hist = math_ops.logical_or(
-        ops.convert_to_tensor(self.accumulate_statistics_over_update_period),
-        update_hist)
-
-    hist = self.histogram
-
+    update_hist = self._should_update_hist()
     grads_rescaled = []
 
     def do_update_and_rescale(g, h, rescaled):
@@ -266,6 +284,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       rescaled.append(g_rescaled)
       return h
 
+    hist = self.histogram
     is_list = isinstance(grads, list)
     if is_list:
       for g in grads:
@@ -275,6 +294,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
     grads_unscaled = grads_rescaled if is_list else grads_rescaled[0]
     self._update_histogram(hist)
+
     return grads_unscaled
 
   def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
@@ -322,6 +342,54 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
     return [self.get_unscaled_gradients(g) for g in scaled_grads]
 
+  def _do_lsf_update(self, captured_grads=None):
+    def _get_updated_lsf(histogram):
+      ratio = histogram[1] / math_ops.reduce_sum(histogram)
+      lsf = control_flow_ops.cond(
+          math_ops.greater(ratio, self.ratio_threshold),
+          lambda: self.loss_scaling_factor * self.decrease_factor,
+          lambda: self.loss_scaling_factor * self.increase_factor)
+
+      # Check the lsf hasn't over or under flowed.
+      lsf = control_flow_ops.cond(math_ops.is_finite(lsf), lambda: lsf,
+                                  lambda: self.loss_scaling_factor)
+
+      # Check the lsf hasn't exceeded the maximum value.
+      lsf = control_flow_ops.cond(
+          math_ops.less(lsf, self.max_loss_scaling_factor), lambda: lsf,
+          lambda: self.loss_scaling_factor)
+
+      # Check that lsf >= 1
+      return control_flow_ops.cond(math_ops.greater_equal(lsf,
+                                                          1.0), lambda: lsf,
+                                   lambda: self.loss_scaling_factor)
+
+    # Are we due an LSF update?
+    do_lsf_update = self._lsf_update_due()
+    update_hist = self._should_update_hist()
+
+    hist = control_flow_ops.cond(
+        update_hist, lambda: self._add_captured_grads(
+            self.histogram, captured_grads=captured_grads),
+        lambda: self.histogram)
+
+    # Get the latest LSF.
+    lsf = control_flow_ops.cond(do_lsf_update, lambda: _get_updated_lsf(hist),
+                                lambda: self.loss_scaling_factor)
+
+    # Reset the gradient histogram if we have performed an LSF update.
+    hist = control_flow_ops.cond(do_lsf_update,
+                                 lambda: array_ops.zeros_like(hist),
+                                 lambda: hist)
+
+    # Update counter.
+    n = control_flow_ops.cond(do_lsf_update, lambda: 1,
+                              lambda: self.update_counter + 1)
+
+    self._assign_var(self._lsf, lsf)
+    self._update_histogram(hist, skip_lpf=do_lsf_update)
+    self._assign_var(self._n, n)
+
   def apply_gradients(  #pylint: disable=arguments-differ
       self,
       grads_and_vars,
@@ -347,71 +415,8 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     Raises:
       ValueError: If the grads_and_vars is malformed.
     """
-    if self.captured_grads_only and not captured_grads:
-      raise ValueError(
-          "ALSOptimizer has captured_grads_only set to True, but no gradients "
-          "have been captured. When using captured_grads_only=True, compatible "
-          "layers must be wrapped with CaptureUpstreamGradients or "
-          "CaptureActivationGradients layers.")
-
-    def _get_updated_lsf(histogram):
-      ratio = histogram[1] / math_ops.reduce_sum(histogram)
-      lsf = control_flow_ops.cond(
-          math_ops.greater(ratio, self.ratio_threshold),
-          lambda: self.loss_scaling_factor * self.decrease_factor,
-          lambda: self.loss_scaling_factor * self.increase_factor)
-
-      # Check the lsf hasn't over or under flowed.
-      lsf = control_flow_ops.cond(math_ops.is_finite(lsf), lambda: lsf,
-                                  lambda: self.loss_scaling_factor)
-
-      # Check the lsf hasn't exceeded the maximum value.
-      lsf = control_flow_ops.cond(
-          math_ops.less(lsf, self.max_loss_scaling_factor), lambda: lsf,
-          lambda: self.loss_scaling_factor)
-
-      # Check that lsf >= 1
-      return control_flow_ops.cond(math_ops.greater_equal(lsf,
-                                                          1.0), lambda: lsf,
-                                   lambda: self.loss_scaling_factor)
-
-    # Are we due an LSF update?
-    do_lsf_update = self._lsf_update_due()
-
-    # If we have additional captured grads, add them to the histogram.
-    def _add_captured_grads(hist):
-      if not captured_grads:
-        return hist
-
-      for g in captured_grads.values():
-        if isinstance(g, (list, tuple)):
-          for gg in g:
-            hist = self._get_updated_hist(gg, hist)
-        else:
-          hist = self._get_updated_hist(g, hist)
-
-      return hist
-
-    hist = control_flow_ops.cond(do_lsf_update,
-                                 lambda: _add_captured_grads(self.histogram),
-                                 lambda: self.histogram)
-
-    # Get the latest LSF.
-    lsf = control_flow_ops.cond(do_lsf_update, lambda: _get_updated_lsf(hist),
-                                lambda: self.loss_scaling_factor)
-
-    # Reset the gradient histogram if we have performed an LSF update.
-    hist = control_flow_ops.cond(do_lsf_update,
-                                 lambda: array_ops.zeros_like(hist),
-                                 lambda: hist)
-
-    # Update counter.
-    n = control_flow_ops.cond(do_lsf_update, lambda: 1,
-                              lambda: self.update_counter + 1)
-
-    self._assign_var(self._lsf, lsf)
-    self._update_histogram(hist)
-    self._assign_var(self._n, n)
+    # Update ALSOptimizer internal state.
+    self._do_lsf_update(captured_grads=captured_grads)
 
     # Apply grads.
     return super().apply_gradients(grads_and_vars, global_step, name)
@@ -462,6 +467,9 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     inner_opt = inner_type(**inner_config)
 
     return ALSOptimizer(inner_opt, **config)
+
+  def get_name(self):
+    return self._name
 
   @property
   def histogram(self):
@@ -627,3 +635,229 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     if val != self.lpf_alpha:
       self.reset()
       self._lpf_alpha = val
+
+
+class ALSOptimizerGradientAccumulationWrapper(
+    ga.GradientAccumulationOptimizerV2):
+  def __init__(self,
+               als_optimizer,
+               num_mini_batches,
+               offload_weight_update_variables=None,
+               replicated_optimizer_state_sharding=False,
+               dtype=None,
+               reduction_method=ga.GradientAccumulationReductionMethod.SUM,
+               name="ALSOptimizerGradientAccumulationWrapper"):
+    """Construct a Gradient Accumulation Optimizer V2 for use with instances of
+    `ALSOptimizer`.
+
+    It should be noted that this Optimizer wraps the Keras `OptimizerV2`
+    derived instance of `ALSOptimizer` in a non-Keras `Optimizer` interface.
+    When performing Gradient Accumulation with Keras, it is not necessary to
+    explicitly wrap `ALSOptimizer`, rather
+    `keras.Model.set_gradient_accumulation_options` should be used.
+
+    Args:
+      opt: An existing `ALSOptimizer` to encapsulate.
+      num_mini_batches: Number of mini-batches the gradients will be accumulated
+        for.
+      offload_weight_update_variables: When enabled, any `tf.Variable` which is
+        only used by the weight update of the pipeline (for example the
+        accumulator variable when using the `tf.MomentumOptimizer`), will be
+        stored in the remote memory. During the weight update this variable will
+        be streamed onto the device and then streamed back to the remote memory
+        after it has been updated. Requires the machine to be configured with
+        support for `Poplar remote buffers`. Offloading variables into remote
+        memory can reduce maximum memory liveness, but can also increase the
+        computation time of the weight update.
+        When set to `None` the variables will be placed in either in-processor
+        or remote memory automatically based on the current best placement
+        strategy.
+      replicated_optimizer_state_sharding: If True, any `tf.Variable` which is
+        offloaded (for example the accumulator variable when using the
+        `tf.MomentumOptimizer`), will be partitioned across the replicas.
+        This can exploit the additional bandwidth of the IPU-Links to improve
+        overall throughput, however it might increase the code size and hence
+        the model might need adjusting (for example the PopLibs option
+        `availableMemoryProportion` might need to be changed).
+      dtype: The data type used for the gradient accumulation buffer.
+        One of:
+          - `None`: Use an accumulator of the same type as the variable type.
+          - A `DType`: Use this type for all the accumulators.
+          - A callable that takes the variable and returns a `DType`: Allows
+            specifying the accumulator type on a per-variable basis.
+
+        The gradients passed to `Optimizer.apply_gradients` will have the dtype
+        requested here. If that dtype is different from the variable dtype
+        a cast is needed at some point to make them compatible. If you want
+        to cast the gradients immediately, you can wrap your optimizer in the
+        `MapGradientOptimizer` with a `tf.cast`.
+      reduction_method: Reduction method to use when accumulating gradients.
+        During the iterations in each optimizer step, the computed gradients can
+        either be directly summed up or scaled such that we compute a mean of
+        all gradients for each variable. Computing a mean avoids potential
+        issues with overflow during accumulation especially when using float16,
+        but gives smaller gradients and might require adjusting the
+        learning-rate accordingly.
+        Defaults to `GradientAccumulationReductionMethod.SUM`
+        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
+      name: Optional name prefix for the operations created when applying
+        gradients. Defaults to "GradientAccumulationOptimizerV2".
+    """
+
+    if not isinstance(als_optimizer, ALSOptimizer):
+      raise ValueError(
+          "keras.ipu.ALSOptimizerGradientAccumulationWrapper can only be used "
+          "with instances of keras.ipu.ALSOptimizer.")
+
+    super().__init__(
+        als_optimizer,
+        num_mini_batches,
+        offload_weight_update_variables=offload_weight_update_variables,
+        replicated_optimizer_state_sharding=replicated_optimizer_state_sharding,
+        dtype=dtype,
+        reduction_method=reduction_method,
+        name=name)
+
+  def compute_gradients(  #pylint: disable=arguments-differ
+      self,
+      loss,
+      var_list=None,
+      gate_gradients=tf_optimizer.Optimizer.GATE_OP,  #pylint: disable=unused-argument
+      aggregation_method=None,  #pylint: disable=unused-argument
+      colocate_gradients_with_ops=False,  #pylint: disable=unused-argument
+      grad_loss=None):  #pylint: disable=unused-argument
+    """Compute gradients of "loss" for the variables in "var_list".
+
+    This simply wraps the `get_gradients` method of the wrapped `ALSOptimizer`.
+    The gradients will be aggregated in this wrappers `apply_gradients` method
+    so that the gradients may be modified with options such as clipping with
+    per replica global norm if needed.
+
+    Args:
+      loss: A Tensor containing the value to minimize.
+      var_list: Optional list or tuple of `tf.Variable` to update to minimize
+        `loss`.  Defaults to the list of variables collected in the graph
+        under the key `GraphKey.TRAINABLE_VARIABLES`.
+      **kwargs: Keyword arguments for compute_gradients().
+
+    Returns:
+      A list of (gradient, variable) pairs.
+    """
+    grads = self._opt.get_gradients(loss, var_list)
+    return list(zip(grads, var_list))
+
+  def apply_gradients(  #pylint: disable=arguments-differ
+      self,
+      grads_and_vars,
+      global_step=None,
+      captured_grads=None,
+      name=None):
+    """Apply gradients to variables.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs as returned by
+        compute_gradients().
+      global_step: Optional Variable to increment by one after the
+        variables have been updated.
+      captured_grads: An optional dictionary (indexed by tags) of captured
+      grads to be forwarded onto the the wrapped `keras.ipu.ALSOptimizer`
+      instance.
+      name: Optional name for the returned operation.  Default to the
+        name passed to the Optimizer constructor.
+
+    Returns:
+      An `Operation` that applies the gradients. If `global_step` was not None,
+      that operation also increments `global_step`.
+
+    Raises:
+      ValueError: If the grads_and_vars is malformed.
+    """
+
+    # GradientAccumulationOptimizerV2 has no support for the passing of
+    # captured grads (nor should it; it's a concept we introduced for Keras).
+    # So, when GradientAccumulationOptimizerV2.apply_gradients calls into
+    # ALSOptimizer.apply_gradients it won't pass captured_grads, meaning
+    # that ALSOptimizer._do_lsf_update won't get them either. So we add them
+    # to the histogram here.
+    def handle_captured():
+      return self.als_optimizer._add_captured_grads(  # pylint: disable=protected-access
+          self.als_optimizer.histogram,
+          captured_grads=captured_grads)
+
+    if captured_grads:
+      should_update = self.als_optimizer._should_update_hist()  # pylint: disable=protected-access
+      hist = control_flow_ops.cond(should_update, handle_captured,
+                                   lambda: self.als_optimizer.histogram)
+
+      self.als_optimizer._update_histogram(  # pylint: disable=protected-access
+          hist,
+          skip_lpf=math_ops.logical_not(should_update))
+
+    return super().apply_gradients(  # pylint: disable=protected-access
+        grads_and_vars,
+        global_step=global_step,
+        name=name)
+
+  @property
+  def als_optimizer(self):
+    return self._opt
+
+  @property
+  def histogram(self):
+    return self.als_optimizer.histogram
+
+  @property
+  def normalized_histogram(self):
+    return self.als_optimizer.normalized_histogram
+
+  @property
+  def loss_scaling_factor(self):
+    return self.als_optimizer.loss_scaling_factor
+
+  @property
+  def update_counter(self):
+    return self.als_optimizer.update_counter
+
+  @property
+  def update_frequency(self):
+    return self.als_optimizer.update_frequency
+
+  @property
+  def increase_factor(self):
+    return self.als_optimizer.increase_factor
+
+  @property
+  def decrease_factor(self):
+    return self.als_optimizer.decrease_factor
+
+  @property
+  def clip_levels(self):
+    return self.als_optimizer.clip_levels
+
+  @property
+  def initial_loss_scaling_factor(self):
+    return self.als_optimizer.initial_loss_scaling_factor
+
+  @property
+  def max_loss_scaling_factor(self):
+    return self.als_optimizer.max_loss_scaling_factor
+
+  @property
+  def accumulate_statistics_over_update_period(self):
+    return self.als_optimizer.accumulate_statistics_over_update_period
+
+  @property
+  def ratio_threshold(self):
+    return self.als_optimizer.ratio_threshold
+
+  @property
+  def supports_captured_grads(self):
+    return self.als_optimizer.supports_captured_grads
+
+  @property
+  def captured_grads_only(self):
+    return self.als_optimizer.captured_grads_only
+
+  @property
+  def lpf_alpha(self):
+    return self.als_optimizer.lpf_alpha

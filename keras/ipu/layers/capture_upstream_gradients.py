@@ -35,7 +35,7 @@ class _GradientCaptureLayerBase(Layer):
     self._layer = layer
     self._tag = tag
 
-    super().__init__(name=tag)
+    super().__init__(dtype=layer.dtype, name=tag)
 
   def call(self, inputs, *args, **kwargs):
     raise NotImplementedError(
