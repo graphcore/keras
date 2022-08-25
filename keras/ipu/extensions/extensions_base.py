@@ -631,7 +631,9 @@ class KerasExtensionBase(base_layer.KerasExtension):
                      iterations,
                      gradient_accumulation_steps_per_replica,
                      add_loss=False,
-                     add_optimizer=False):
+                     add_optimizer=False,
+                     freeze_variables=False,
+                     input_signature=None):
     _sanity_check_optimizer(self.optimizer)
 
     training = add_loss and add_optimizer
@@ -797,6 +799,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
       for stage_id in sorted(post_order_nodes_and_assignment):
         computational_stages.append(partial(stage, stage_id))
 
+      if freeze_variables and input_signature is not None:
+        computational_stages = serving._freeze_computational_stages(  # pylint: disable=protected-access
+            computational_stages, input_signature)
+
       # When training loss and metrics are the outputs from the last
       # computational stage, but we only want to outfeed the metrics so mask out
       # the loss.
@@ -864,11 +870,16 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     return predict_function
 
-  def _make_pipeline_ipu_predict_function(self, steps_per_execution):
+  def _make_pipeline_ipu_predict_function(self,
+                                          steps_per_execution,
+                                          freeze_variables=False,
+                                          input_signature=None):
     return self._make_pipeline(1,
                                steps_per_execution,
                                add_loss=False,
-                               add_optimizer=False)
+                               add_optimizer=False,
+                               freeze_variables=freeze_variables,
+                               input_signature=input_signature)
 
   def _make_ipu_train_function_wrapper(self):
     def wrapper(pipeline_iterations, gradient_accumulation_steps_per_replica):
@@ -1958,7 +1969,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
       outfeed = self._outfeed_manager.get_outfeed(_Mode.PREDICT,
                                                   self._outfeed_kwargs)
 
-      predict_fn = self._make_pipeline_ipu_predict_function(iterations)
+      predict_fn = self._make_pipeline_ipu_predict_function(
+          iterations, freeze_variables=False, input_signature=input_signature)
 
       @tf_function
       def defunc():
@@ -1969,6 +1981,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
       def predict_step(*args):
         return self.__call__(args)
 
+      predict_step = serving._freeze_single_step(  # pylint: disable=protected-access
+          predict_step, input_signature)
       defunc = serving._wrap_in_loop(  # pylint: disable=protected-access
           predict_step, input_signature, None, iterations)
 

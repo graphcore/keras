@@ -368,7 +368,7 @@ tf_py_test(
     name = "serving_export_test",
     size = "large",
     srcs = ["serving_export_test.py"],
-    shard_count = 16,
+    shard_count = 17,
     tags = ["hw_poplar_test_2_ipus"],
     deps = [
         "//:expect_absl_installed",

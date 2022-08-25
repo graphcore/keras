@@ -21,9 +21,12 @@ import numpy as np
 from absl.testing import parameterized
 import tensorflow.compat.v2 as tf
 
+from tensorflow.python import ipu
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import function
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import test_utils as tu
-from tensorflow.python import ipu
+from tensorflow.python.ops.functional_ops import partitioned_call
 
 import keras
 from keras import testing_utils
@@ -827,6 +830,65 @@ class ExportForServingTest(TestServingExportBase):
                           dtype=np.float32)
       self.assertAllClose(result_out0, ref_out0)
       self.assertAllClose(result_out1, np.add.reduce(ref_out0, 1))
+
+  @tu.test_uses_ipus(num_ipus=1, allow_ipu_model=False)
+  @testing_utils.run_v2_only
+  def test_export_keras_stateful_partition_call(self):
+    iterations = 10
+    batch_size = 1
+    input_shape = (batch_size, 4)
+
+    var_value = np.float32(10.)
+    w = tf.Variable(var_value)
+
+    x = np.arange(4, dtype=np.float32).reshape(input_shape)
+    y = np.ones(input_shape, dtype=np.float32)
+
+    expected_result = np.absolute(x) + ((y + y) * var_value)
+
+    @function.Defun(tf.float32, tf.float32)
+    def partition_call_body(constant, var):
+      return (constant + constant) * var
+
+    @def_function.function(input_signature=(tf.TensorSpec(shape=input_shape,
+                                                          dtype=tf.float32),))
+    def partition_call_step(x):
+      return tf.reshape(partitioned_call(args=[x, w], f=partition_call_body),
+                        input_shape)
+
+    def preprocessing_step(lhs_input, rhs_input):
+      abs_layer = keras.layers.Lambda(tf.abs)
+      scale_layer = keras.layers.Lambda(partition_call_step)
+
+      return abs_layer(lhs_input), scale_layer(rhs_input)
+
+    strategy = ipu.ipu_strategy.IPUStrategy()
+    with strategy.scope():
+      # Always set `batch_size` if model has explicit input layers.
+      input1 = keras.layers.Input(shape=input_shape[1:],
+                                  batch_size=batch_size,
+                                  name="input_1")
+      input2 = keras.layers.Input(shape=input_shape[1:],
+                                  batch_size=batch_size,
+                                  name="input_2")
+
+      output = keras.layers.Add()(preprocessing_step(input1, input2))
+
+      model = keras.Model(inputs=[input1, input2], outputs=output)
+
+      model.build([input_shape, input_shape])
+      # Call compile to set the number of iterations of the inference loop.
+      # It can be used to tweak the inference latency.
+      model.compile(steps_per_execution=iterations)
+
+    with tempfile.TemporaryDirectory() as tmp_folder:
+      runtime_func = ipu.serving.export_keras(model,
+                                              tmp_folder,
+                                              batch_size,
+                                              output_names='result')
+
+      result = runtime_func(x, y)['result']
+      self.assertAllClose(result, expected_result)
 
 
 if __name__ == '__main__':
