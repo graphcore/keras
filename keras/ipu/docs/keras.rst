@@ -197,10 +197,11 @@ different pipeline stages as follows:
   :end-at: model = keras.Model(inputs=input_layer, outputs=x)
 
 .. note::
-Layers *constructed* within an `keras.ipu.PipelineStage` context will have that
-pipeline stage assigned to all invocations of the layer. These assignments are
-overridden if the layer calls happen within a different
-`keras.ipu.PipelineStage` context.
+
+  Layers *constructed* within a `keras.ipu.PipelineStage` context will have that
+  pipeline stage assigned to all invocations of the layer. These assignments are
+  overridden if the layer calls happen within a different
+  `keras.ipu.PipelineStage` context.
 
 Pipelining an existing functional model
 =======================================
@@ -268,10 +269,11 @@ different pipeline stages as follows:
   :end-at:     return x
 
 .. note::
-Layers *constructed* within an `keras.ipu.PipelineStage` context will have that
-pipeline stage assigned to all invocations of the layer. These assignments are
-overridden if the layer calls happen within a different
-`keras.ipu.PipelineStage` context.
+
+  Layers *constructed* within a `keras.ipu.PipelineStage` context will have that
+  pipeline stage assigned to all invocations of the layer. These assignments are
+  overridden if the layer calls happen within a different
+  `keras.ipu.PipelineStage` context.
 
 Pipelining an existing model
 ============================
