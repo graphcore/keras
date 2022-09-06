@@ -572,11 +572,13 @@ class KerasExtensionBase(base_layer.KerasExtension):
     _sanity_check_optimizer(self.optimizer)
 
     if isinstance(self.optimizer, als.ALSOptimizer):
-      optimizer = als.ALSOptimizerGradientAccumulationWrapper(
+      optimizer = als.ALSGradientAccumulationOptimizer(
           self.optimizer,
           num_mini_batches=gradient_accumulation_steps_per_replica,
           reduction_method=self._gradient_accumulation_reduction_method,
           **self._gradient_accumulation_optimizer_kwargs)
+
+      optimizer = _KerasOptimizerWrapper(self, optimizer)
     else:
       optimizer = _KerasOptimizerWrapper(self, self.optimizer)
 
@@ -1151,6 +1153,12 @@ class KerasExtensionBase(base_layer.KerasExtension):
             "`set_pipelining_options`. This argument has now been "
             "removed, use "
             "`gradient_accumulation_reduction_method` instead.")
+
+      # If `gradient_accumulation_for_captured_grads` hasn't been set, default
+      # it to False as at present, the primary use case for gradient capture
+      # in Keras is ALS.
+      if not 'gradient_accumulation_for_captured_grads' in pipelining_kwargs:
+        pipelining_kwargs['gradient_accumulation_for_captured_grads'] = False
 
       self._pipelining_kwargs = pipelining_kwargs
       reset_extension = True

@@ -18,4 +18,5 @@ Keras Optimizer specializations for the Graphcore IPU
 """
 
 from keras.ipu.optimizers.als_optimizer import ALSOptimizer
-from keras.ipu.optimizers.als_optimizer import ALSOptimizerGradientAccumulationWrapper
+from keras.ipu.optimizers.als_optimizer import ALSGradientAccumulationOptimizer
+from keras.ipu.optimizers.gradient_accumulation_optimizer import GradientAccumulationOptimizer

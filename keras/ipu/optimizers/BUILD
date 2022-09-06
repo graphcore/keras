@@ -33,6 +33,7 @@ py_library(
     srcs = [
         "__init__.py",
         "als_optimizer.py",
+        "gradient_accumulation_optimizer.py",
         "optimizer_v2_wrapper.py",
     ],
     srcs_version = "PY3",
@@ -44,12 +45,64 @@ py_library(
     ],
 )
 
+py_library(
+    name = "als_optimizer_test_utils",
+    testonly = 1,
+    srcs = ["als_optimizer_test_utils.py"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras/api:keras_api",
+    ],
+)
+
 tf_py_test(
     name = "als_optimizer_test",
     size = "large",
-    srcs = ["als_optimizer_test.py"],
+    srcs = [
+        "als_optimizer_test.py",
+    ],
     python_version = "PY3",
     shard_count = 32,
+    deps = [
+        ":als_optimizer_test_utils",
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras/api:keras_api",
+    ],
+)
+
+tf_py_test(
+    name = "als_optimizer_pipeline_test",
+    size = "large",
+    srcs = [
+        "als_optimizer_pipeline_test.py",
+    ],
+    python_version = "PY3",
+    shard_count = 32,
+    deps = [
+        ":als_optimizer_test_utils",
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras/api:keras_api",
+    ],
+)
+
+tf_py_test(
+    name = "optimizer_serialization_test",
+    size = "small",
+    srcs = [
+        "optimizer_serialization_test.py",
+    ],
+    python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//:expect_absl_installed",
         "//:expect_numpy_installed",

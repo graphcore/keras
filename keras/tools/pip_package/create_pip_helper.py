@@ -28,6 +28,9 @@ PIP_EXCLUDED_FILES = frozenset([
     'keras/distribute/tpu_strategy_test_utils.py',
     'keras/tools/pip_package/setup.py',
     'keras/tools/pip_package/create_pip_helper.py',
+    # BEGIN IPU SPECIFIC CHANGE
+    'keras/ipu/optimizers/als_optimizer_test_utils.py',
+    # END IPU SPECIFIC CHANGE
 ])
 
 PIP_EXCLUDED_DIRS = frozenset([

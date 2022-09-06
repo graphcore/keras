@@ -235,7 +235,8 @@ class CaptureUpstreamGradientsTest(tf.test.TestCase, parameterized.TestCase):
       opt, outfeed = opt_fn()
       m = pipeline_fn()
       m.set_pipelining_options(gradient_accumulation_steps_per_replica=4,
-                               device_mapping=[0, 1])
+                               device_mapping=[0, 1],
+                               gradient_accumulation_for_captured_grads=True)
       m.compile(opt, 'mse', steps_per_execution=4)
 
       history = m.fit(*data_fn(), batch_size=4, epochs=1)

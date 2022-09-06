@@ -37,95 +37,13 @@ from keras import layers
 from keras.ipu.layers import CaptureUpstreamGradients
 from keras.ipu.layers import CaptureActivationGradients
 from keras.ipu.optimizers import ALSOptimizer
-from keras.ipu.optimizers import ALSOptimizerGradientAccumulationWrapper
+from keras.ipu.optimizers import ALSGradientAccumulationOptimizer
 from keras.optimizer_v2 import adam as adam_v2
 from keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 
-NUM_BATCHES = 4
-BATCH_SIZE = 64
-INPUT_SHAPE = (NUM_BATCHES * BATCH_SIZE, 4)
-OUTPUT_SHAPE = (NUM_BATCHES * BATCH_SIZE, 128)
+from keras.ipu.optimizers import als_optimizer_test_utils as als_tu
 
-DATA = np.ones(shape=INPUT_SHAPE, dtype=np.float32)
-TARGETS = np.ones(shape=OUTPUT_SHAPE, dtype=np.float32)
-
-
-def dense_fn(dtype, wrapper_type=None):
-  wrapper = lambda x: x
-  if wrapper_type:
-    assert wrapper_type in (CaptureUpstreamGradients,
-                            CaptureActivationGradients)
-
-    wrapper = wrapper_type
-
-  return wrapper(
-      layers.Dense(OUTPUT_SHAPE[1],
-                   activation='relu',
-                   dtype=dtype,
-                   kernel_initializer=init_ops.constant_initializer(1.0)))
-
-
-OPTIMIZER_CASES = [{
-    'testcase_name': 'Adam',
-    'optimizer_type': adam_v2.Adam,
-    'optimizer_args': [0.01],
-    'optimizer_kwargs': {}
-}, {
-    'testcase_name': 'GradientDescent',
-    'optimizer_type': gradient_descent_v2.SGD,
-    'optimizer_args': [0.01],
-    'optimizer_kwargs': {},
-}]
-
-ALS_OPTIMIZER_KWARG_CASES = [{
-    'initial_loss_scaling_factor': 64,
-    'update_frequency': 2,
-    'increase_factor': 2,
-}, {
-    'initial_loss_scaling_factor': 32,
-    'update_frequency': 2,
-    'increase_factor': 4
-}, {
-    'initial_loss_scaling_factor': 32,
-    'update_frequency': 2,
-    'increase_factor': 8
-}, {
-    'initial_loss_scaling_factor': 16,
-    'update_frequency': 2,
-    'increase_factor': 16
-}]
-
-WRAPPER_CASES = [(None, 'no_wrapper'),
-                 (CaptureUpstreamGradients, 'CaptureUpstreamGradients'),
-                 (CaptureActivationGradients, 'CaptureActivationGradients')]
-
-GRADIENT_ACCUMULATION_CASES = [1, 2]
-
-
-def generate_test_cases():
-  case_cartesian_product = itertools.product(OPTIMIZER_CASES,
-                                             ALS_OPTIMIZER_KWARG_CASES,
-                                             WRAPPER_CASES,
-                                             GRADIENT_ACCUMULATION_CASES)
-
-  cases = []
-  n = 0
-  for opt_case, als_case, wrapper_case, ga_case in case_cartesian_product:
-    c = copy.deepcopy(opt_case)
-    c['testcase_name'] += f"TestCase{n}_{wrapper_case[1]}_GA{ga_case}"
-    c['als_kwargs'] = als_case
-    c['wrapper_type'] = wrapper_case[0]
-    c['ga_steps_per_replica'] = ga_case
-    cases.append(c)
-    n += 1
-  return cases
-
-
-TEST_CASES = generate_test_cases()
-
-
-def num_iters(update_freq, ga_steps):
-  return update_freq // ga_steps - int(ga_steps == 1)
+TEST_CASES = als_tu.generate_test_cases()
 
 
 class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
@@ -167,13 +85,6 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "loss_scaling_factor is a read only property."):
       opt_wrapper.loss_scaling_factor = 1
-
-  def testCannotSetClipLevels(self):
-    opt = gradient_descent_v2.SGD(0.1)
-    opt_wrapper = ALSOptimizer(opt)
-    with self.assertRaisesRegex(ValueError,
-                                "clip_levels is a read only property."):
-      opt_wrapper.clip_levels = None
 
   def testCannotSetDecreaseFactor(self):
     opt = gradient_descent_v2.SGD(0.1)
@@ -248,10 +159,10 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  captured_grads_only=captured_only)
 
       if ga_steps_per_replica > 1:
-        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
-            opt_wrapper, ga_steps_per_replica)
+        opt_wrapper = ALSGradientAccumulationOptimizer(opt_wrapper,
+                                                       ga_steps_per_replica)
 
-      dense = dense_fn(np.float16, wrapper_type=wrapper_type)
+      dense = als_tu.dense_fn(tf.float16, wrapper_type=wrapper_type)
 
       @def_function.function(jit_compile=True)
       def f(x, t, _):
@@ -260,11 +171,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
           l = losses.mean_squared_error(labels=t, predictions=y)
 
         v = dense.trainable_weights
-        if ga_steps_per_replica == 1:
-          g = opt_wrapper.get_gradients(l, v)
-          gv = list(zip(g, v))
-        else:
-          gv = opt_wrapper.compute_gradients(l, v)
+        gv = als_tu.get_grads_and_vars(ga_steps_per_replica, v, opt_wrapper, l)
         opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
         return x, t, l
 
@@ -274,8 +181,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         return l
 
       model_losses = []
-      for _ in range(10):
-        res = strategy.run(loop_fn, args=[DATA, TARGETS])
+      for _ in range(3):
+        res = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS])
         model_losses.append(res)
 
     last_loss = float('inf')
@@ -310,11 +217,11 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  captured_grads_only=captured_only)
 
       if ga_steps_per_replica > 1:
-        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
-            opt_wrapper, ga_steps_per_replica)
+        opt_wrapper = ALSGradientAccumulationOptimizer(opt_wrapper,
+                                                       ga_steps_per_replica)
 
-      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
-      dense1 = dense_fn(np.float32)
+      dense0 = als_tu.dense_fn(tf.float16, wrapper_type=wrapper_type)
+      dense1 = als_tu.dense_fn(tf.float32)
 
       @def_function.function(jit_compile=True)
       def f(x, t, _):
@@ -323,11 +230,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
           l = losses.mean_squared_error(labels=t, predictions=y)
 
         v = dense0.trainable_variables + dense1.trainable_variables
-        if ga_steps_per_replica == 1:
-          g = opt_wrapper.get_gradients(l, v)
-          gv = list(zip(g, v))
-        else:
-          gv = opt_wrapper.compute_gradients(l, v)
+        gv = als_tu.get_grads_and_vars(ga_steps_per_replica, v, opt_wrapper, l)
         opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
         return x, t, l
 
@@ -344,10 +247,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
         return l
 
-      targets_huge = TARGETS * np.finfo(np.float16).max * 10
-      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
-      for _ in range(n):
-        l = strategy.run(loop_fn, args=[DATA, targets_huge])
+      for _ in range(opt_wrapper.update_frequency):
+        l = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS_HUGE])
         self.assertTrue(np.isfinite(l))
 
         # We expect gradients only for the float16 dense layer to be taken into
@@ -361,7 +262,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF decreases after the next epoch.
-      _ = strategy.run(loop_fn, args=[DATA, targets_huge])
+      _ = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS_HUGE])
       lsf = strategy.run(g)
       self.assertLess(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -401,11 +302,11 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  captured_grads_only=captured_only)
 
       if ga_steps_per_replica > 1:
-        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
-            opt_wrapper, ga_steps_per_replica)
+        opt_wrapper = ALSGradientAccumulationOptimizer(opt_wrapper,
+                                                       ga_steps_per_replica)
 
-      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
-      dense1 = dense_fn(np.float32)
+      dense0 = als_tu.dense_fn(tf.float16, wrapper_type=wrapper_type)
+      dense1 = als_tu.dense_fn(tf.float32)
 
       @def_function.function(jit_compile=True)
       def f(x, t, _):
@@ -414,11 +315,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
           l = losses.mean_squared_error(labels=t, predictions=y)
 
         v = dense0.trainable_variables + dense1.trainable_variables
-        if ga_steps_per_replica == 1:
-          g = opt_wrapper.get_gradients(l, v)
-          gv = list(zip(g, v))
-        else:
-          gv = opt_wrapper.compute_gradients(l, v)
+        gv = als_tu.get_grads_and_vars(ga_steps_per_replica, v, opt_wrapper, l)
         opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
         return x, t, l
 
@@ -435,9 +332,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
         return l
 
-      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
-      for _ in range(n):
-        l = strategy.run(loop_fn, args=[DATA, TARGETS])
+      for _ in range(opt_wrapper.update_frequency):
+        l = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS])
         self.assertTrue(np.isfinite(l))
 
         # We expect gradients only for the float16 dense layer to be taken into
@@ -451,7 +347,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF increases after the next epoch.
-      _ = strategy.run(loop_fn, args=[DATA, TARGETS])
+      _ = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS])
       lsf = strategy.run(g)
       self.assertGreater(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -478,39 +374,35 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
     cfg.ipu_model.tiles_per_ipu = 16
     cfg.configure_ipu_system()
 
-    # In these tests, if we are using CaptureUpstreamGradients then we'll end
-    # up with duplicate gradients in the histogram. So we run ALS using only
-    # the captured gradients.
+    # For this particular test, using a one-shot collection of gradients,
+    # coupled with using only captured gradients is not sufficient to trigger
+    # overflow. The reason for this is that when we compute statistics over
+    # gradients obtained from get_gradients, they are summed by batch, whereas
+    # captured gradients are not. They are directly lifted from the op grad.
     captured_only = wrapper_type == CaptureUpstreamGradients
+    if captured_only:
+      return
 
     strategy = IPUStrategyV1()
     with strategy.scope():
       opt = optimizer_type(*optimizer_args, **optimizer_kwargs)
       opt_wrapper = ALSOptimizer(
-          opt,
-          **als_kwargs,
-          accumulate_statistics_over_update_period=False,
-          captured_grads_only=captured_only)
+          opt, **als_kwargs, accumulate_statistics_over_update_period=False)
 
       if ga_steps_per_replica > 1:
-        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
-            opt_wrapper, ga_steps_per_replica)
+        opt_wrapper = ALSGradientAccumulationOptimizer(opt_wrapper,
+                                                       ga_steps_per_replica)
 
-      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
-      dense1 = dense_fn(np.float32)
+      dense0 = als_tu.dense_fn(tf.float16, wrapper_type=wrapper_type)
 
       @def_function.function(jit_compile=True)
       def f(x, t, _):
         with ipu_backprop.GradientCaptureTape() as tape:
-          y = dense1(dense0(x))
+          y = dense0(x)
           l = losses.mean_squared_error(labels=t, predictions=y)
 
-        v = dense0.trainable_variables + dense1.trainable_variables
-        if ga_steps_per_replica == 1:
-          g = opt_wrapper.get_gradients(l, v)
-          gv = list(zip(g, v))
-        else:
-          gv = opt_wrapper.compute_gradients(l, v)
+        v = dense0.trainable_variables
+        gv = als_tu.get_grads_and_vars(ga_steps_per_replica, v, opt_wrapper, l)
         opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
         return x, t, l
 
@@ -527,10 +419,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
         return l
 
-      targets_huge = TARGETS * np.finfo(np.float16).max * 10
-      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
-      for _ in range(n):
-        l = strategy.run(loop_fn, args=[DATA, targets_huge])
+      for _ in range(opt_wrapper.update_frequency):
+        l = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS_HUGE])
         self.assertTrue(np.isfinite(l))
 
         # In this loop, we expect the histogram to always be zeros.
@@ -542,7 +432,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF decreases after the next epoch.
-      _ = strategy.run(loop_fn, args=[DATA, targets_huge])
+      _ = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS_HUGE])
       lsf = strategy.run(g)
       self.assertLess(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -584,24 +474,19 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
           captured_grads_only=captured_only)
 
       if ga_steps_per_replica > 1:
-        opt_wrapper = ALSOptimizerGradientAccumulationWrapper(
-            opt_wrapper, ga_steps_per_replica)
+        opt_wrapper = ALSGradientAccumulationOptimizer(opt_wrapper,
+                                                       ga_steps_per_replica)
 
-      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)
-      dense1 = dense_fn(np.float32)
+      dense0 = als_tu.dense_fn(tf.float16, wrapper_type=wrapper_type)
 
       @def_function.function(jit_compile=True)
       def f(x, t, _):
         with ipu_backprop.GradientCaptureTape() as tape:
-          y = dense1(dense0(x))
+          y = dense0(x)
           l = losses.mean_squared_error(labels=t, predictions=y)
 
-        v = dense0.trainable_variables + dense1.trainable_variables
-        if ga_steps_per_replica == 1:
-          g = opt_wrapper.get_gradients(l, v)
-          gv = list(zip(g, v))
-        else:
-          gv = opt_wrapper.compute_gradients(l, v)
+        v = dense0.trainable_variables
+        gv = als_tu.get_grads_and_vars(ga_steps_per_replica, v, opt_wrapper, l)
         opt_wrapper.apply_gradients(gv, captured_grads=tape.captured_gradients)
         return x, t, l
 
@@ -618,9 +503,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         _, _, l = loops.repeat(ga_steps_per_replica, f, inputs=[x, t, 0.0])
         return l
 
-      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
-      for _ in range(n):
-        l = strategy.run(loop_fn, args=[DATA, TARGETS])
+      for _ in range(opt_wrapper.update_frequency):
+        l = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS])
         self.assertTrue(np.isfinite(l))
 
         # In this loop, we expect the histogram to always be zeros.
@@ -632,7 +516,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # Check that the LSF increases after the next epoch.
-      _ = strategy.run(loop_fn, args=[DATA, TARGETS])
+      _ = strategy.run(loop_fn, args=[als_tu.DATA, als_tu.TARGETS])
       lsf = strategy.run(g)
       self.assertGreater(lsf, opt_wrapper.initial_loss_scaling_factor)
 
@@ -671,8 +555,8 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  **als_kwargs,
                                  captured_grads_only=captured_only)
 
-      input_layer = layers.Input(shape=DATA.shape[1])
-      dense = dense_fn(np.float16, wrapper_type)(input_layer)
+      input_layer = layers.Input(shape=als_tu.DATA.shape[1])
+      dense = als_tu.dense_fn(tf.float16, wrapper_type)(input_layer)
 
       m = keras.Model(inputs=input_layer, outputs=dense)
 
@@ -683,10 +567,10 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       m.set_gradient_accumulation_options(
           gradient_accumulation_steps_per_replica=ga_steps_per_replica)
 
-      history = m.fit(DATA,
-                      TARGETS,
+      history = m.fit(als_tu.DATA,
+                      als_tu.TARGETS,
                       epochs=3,
-                      batch_size=BATCH_SIZE,
+                      batch_size=als_tu.BATCH_SIZE,
                       steps_per_epoch=ga_steps_per_replica,
                       verbose=False)
 
@@ -721,10 +605,11 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  **als_kwargs,
                                  captured_grads_only=captured_only)
 
-      input_layer = layers.Input(shape=DATA.shape[1])
+      input_layer = layers.Input(shape=als_tu.DATA.shape[1])
 
-      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)(input_layer)
-      dense1 = dense_fn(np.float32)(dense0)
+      dense0 = als_tu.dense_fn(tf.float16,
+                               wrapper_type=wrapper_type)(input_layer)
+      dense1 = als_tu.dense_fn(tf.float32)(dense0)
 
       m = keras.Model(inputs=input_layer, outputs=dense1)
 
@@ -743,13 +628,11 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      targets_huge = TARGETS * np.finfo(np.float16).max * 10
-      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
-      for _ in range(n):
-        history = m.fit(DATA,
-                        targets_huge,
+      for _ in range(opt_wrapper.update_frequency):
+        history = m.fit(als_tu.DATA,
+                        als_tu.TARGETS_HUGE,
                         epochs=1,
-                        batch_size=BATCH_SIZE,
+                        batch_size=als_tu.BATCH_SIZE,
                         steps_per_epoch=ga_steps_per_replica,
                         verbose=False)
 
@@ -766,10 +649,10 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # The LSF should have decreased after this next epoch.
-      history = m.fit(DATA,
-                      targets_huge,
+      history = m.fit(als_tu.DATA,
+                      als_tu.TARGETS_HUGE,
                       epochs=1,
-                      batch_size=BATCH_SIZE,
+                      batch_size=als_tu.BATCH_SIZE,
                       steps_per_epoch=ga_steps_per_replica,
                       verbose=False)
 
@@ -811,10 +694,11 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  **als_kwargs,
                                  captured_grads_only=captured_only)
 
-      input_layer = layers.Input(shape=DATA.shape[1])
+      input_layer = layers.Input(shape=als_tu.DATA.shape[1])
 
-      dense0 = dense_fn(np.float16, wrapper_type=wrapper_type)(input_layer)
-      dense1 = dense_fn(np.float32)(dense0)
+      dense0 = als_tu.dense_fn(tf.float16,
+                               wrapper_type=wrapper_type)(input_layer)
+      dense1 = als_tu.dense_fn(tf.float32)(dense0)
 
       m = keras.Model(inputs=input_layer, outputs=dense1)
 
@@ -833,12 +717,11 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
       def h():
         return opt_wrapper.histogram
 
-      n = num_iters(opt_wrapper.update_frequency, ga_steps_per_replica)
-      for _ in range(n):
-        history = m.fit(DATA,
-                        TARGETS,
+      for _ in range(opt_wrapper.update_frequency):
+        history = m.fit(als_tu.DATA,
+                        als_tu.TARGETS,
                         epochs=1,
-                        batch_size=BATCH_SIZE,
+                        batch_size=als_tu.BATCH_SIZE,
                         steps_per_epoch=ga_steps_per_replica,
                         verbose=False)
 
@@ -855,10 +738,10 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllEqual(lsf, opt_wrapper.initial_loss_scaling_factor)
 
       # The LSF should have increased after this next epoch.
-      history = m.fit(DATA,
-                      TARGETS,
+      history = m.fit(als_tu.DATA,
+                      als_tu.TARGETS,
                       epochs=1,
-                      batch_size=BATCH_SIZE,
+                      batch_size=als_tu.BATCH_SIZE,
                       steps_per_epoch=ga_steps_per_replica,
                       verbose=False)
 
@@ -890,7 +773,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  max_loss_scaling_factor=16,
                                  update_frequency=1)
 
-      v = variables.Variable(1.0, dtype=np.float16)
+      v = variables.Variable(1.0, dtype=tf.float16)
 
       @def_function.function(jit_compile=True)
       def f():
@@ -910,7 +793,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         return v.assign(1.0)
 
       # We expect the LSF to increase and cap at 8.
-      for expected_lsf in [2.0, 4.0, 8.0, 8.0]:
+      for expected_lsf in [2, 4, 8, 8]:
         # "Train"
         _ = strategy.run(f)
 
@@ -936,7 +819,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
                                  update_frequency=1)
 
       v_init = np.finfo(np.float16).max
-      v = variables.Variable(v_init, dtype=np.float16, shape=())
+      v = variables.Variable(v_init, dtype=tf.float16, shape=())
 
       @def_function.function(jit_compile=True)
       def f():
@@ -956,7 +839,7 @@ class ALSOptimizerTest(tf.test.TestCase, parameterized.TestCase):
         return v.assign(v_init)
 
       # We expect the LSF to decrease and cap at 1.
-      for expected_lsf in [8.0, 4.0, 2.0, 1.0, 1.0]:
+      for expected_lsf in [8, 4, 2, 1, 1]:
         # "Train"
         _ = strategy.run(f)
 
