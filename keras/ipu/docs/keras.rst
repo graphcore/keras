@@ -253,6 +253,15 @@ method. There are two ways to enable IPU pipelining for an instance of a
 yourself or an existing model. These are very similar to the methods available
 for ``Functional`` models.
 
+Note that the following ``Model`` methods cannot be overridden:
+
+* `train_step`
+* `make_train_function`
+* `test_step`
+* `make_test_function`
+* `predict_step`
+* `make_predict_function`
+
 Pipelining a model you are writing yourself
 ===========================================
 

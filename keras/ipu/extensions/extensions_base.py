@@ -904,21 +904,23 @@ class KerasExtensionBase(base_layer.KerasExtension):
               gradient_accumulation_steps_per_replica)
 
         if need_to_rerun:
-          if self._make_train_function_overridden():
+
+          def _raise_overridden(fn_name):
             raise RuntimeError(
-                "The function `make_train_function` for the model {} has been "
+                f"The function `{fn_name}` for the model {self.name} has been "
                 "overridden. This is not supported when using Keras within an "
                 "IPUStrategy. Either remove the override from your model "
                 "definition or set `enable_keras_extensions=False` when "
-                "creating the IPUStrategy.".format(self.name))
+                "creating the IPUStrategy.")
+
+          if self._make_train_function_overridden():
+            _raise_overridden('make_train_function')
+
+          if self._train_step_overridden():
+            _raise_overridden('train_step')
 
           self._validate_call_function()
           if self._is_pipelined():
-            if self._train_step_overridden():
-              raise RuntimeError(
-                  "The function `train_step` for the model {} has been "
-                  "overridden. This is not supported for pipelined Keras "
-                  "models.".format(self.name))
             self._compiled_pipeline_train_iterations = pipeline_iterations
             self._compiled_pipeline_gradient_accumulation_steps_per_replica = \
               gradient_accumulation_steps_per_replica
@@ -926,11 +928,6 @@ class KerasExtensionBase(base_layer.KerasExtension):
                 pipeline_iterations, gradient_accumulation_steps_per_replica)
           else:
             if gradient_accumulation_steps_per_replica > 1:
-              if self._train_step_overridden():
-                raise RuntimeError(
-                    "The function `train_step` for the model {} has been "
-                    "overridden. This is not supported for Keras models with "
-                    "gradient accumulation enabled.".format(self.name))
               self._ipu_train_function = \
                 self._make_single_ipu_train_function_with_gradient_accumulation(
                     gradient_accumulation_steps_per_replica)

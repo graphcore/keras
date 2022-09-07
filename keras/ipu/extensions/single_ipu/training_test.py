@@ -1388,18 +1388,9 @@ class TrainingTest(keras_parameterized.TestCase):
     test_case = self
 
     class MyModel(training_module.Model):
-      def train_step(self, data):
-        # No tuple wrapping for single x input and no targets.
+      def call(self, data, training=True):
         test_case.assertIsInstance(data, expected_data_type)
-        return super().train_step(data)
-
-      def test_step(self, data):
-        test_case.assertIsInstance(data, expected_data_type)
-        return super().test_step(data)
-
-      def predict_step(self, data):
-        test_case.assertIsInstance(data, expected_data_type)
-        return super().predict_step(data)
+        return super().call(data, training=training)
 
     inputs = layers_module.Input(shape=(1,), name='my_input')
     outputs = layers_module.Dense(1)(inputs)
