@@ -25,10 +25,10 @@ from keras import layers
 from keras.engine import data_adapter
 from keras.optimizer_v2 import gradient_descent
 from tensorflow.python import ipu
-from tensorflow.python.ipu import horovod as hvd
-from tensorflow.python.ipu.horovod import popdist_strategy
+from tensorflow.python.ipu import distributed as hvd
 from tensorflow.python.ipu import ipu_strategy
 from tensorflow.python.ipu import test_utils as tu
+from tensorflow.python.ipu.distributed import popdist_strategy
 from tensorflow.python.framework import test_util as tf_test_util
 
 
@@ -60,6 +60,11 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 
 
 class DistributedTF2Test(tf.test.TestCase):
+  @classmethod
+  def setUpClass(cls):
+    hvd.init()
+    cls.strategy = popdist_strategy.PopDistStrategy()
+
   def assert_all_instances_equal(self, local_value, name=None):
     # Assert that the current instance has the same value as the root instance.
     local_tensor = tf.constant(local_value)
@@ -161,9 +166,7 @@ class DistributedTF2Test(tf.test.TestCase):
 
     hvd.init()
 
-    strategy = popdist_strategy.PopDistStrategy()
-
-    with strategy.scope():
+    with self.strategy.scope():
       dataset = test_dataset(popdist.getNumTotalReplicas() * batch_size *
                              steps_to_run,
                              batch_size=batch_size)
@@ -200,11 +203,7 @@ class DistributedTF2Test(tf.test.TestCase):
     popdist.tensorflow.set_ipu_config(config, ipus_per_replica=1)
     config.configure_ipu_system()
 
-    hvd.init()
-
-    strategy = popdist_strategy.PopDistStrategy()
-
-    with strategy.scope():
+    with self.strategy.scope():
       learning_rate = 0.5
       initial_w = 2.0
       optimizer = gradient_descent.SGD(learning_rate=learning_rate)
@@ -221,9 +220,9 @@ class DistributedTF2Test(tf.test.TestCase):
 
       @tf.function(jit_compile=True)
       def step_fn_wrapper(x):
-        per_replica_loss = strategy.run(step_fn, args=[x])
-        loss_reduced = strategy.reduce(tf.distribute.ReduceOp.SUM,
-                                       per_replica_loss)
+        per_replica_loss = self.strategy.run(step_fn, args=[x])
+        loss_reduced = self.strategy.reduce(tf.distribute.ReduceOp.SUM,
+                                            per_replica_loss)
 
         return loss_reduced
 
@@ -247,11 +246,7 @@ class DistributedTF2Test(tf.test.TestCase):
     popdist.tensorflow.set_ipu_config(config, ipus_per_replica=1)
     config.configure_ipu_system()
 
-    hvd.init()
-
-    strategy = popdist_strategy.PopDistStrategy()
-
-    with strategy.scope():
+    with self.strategy.scope():
       learning_rate = 0.5
       initial_w = 2.0
       model = keras.Sequential([
@@ -312,11 +307,7 @@ class DistributedTF2Test(tf.test.TestCase):
     popdist.tensorflow.set_ipu_config(config, ipus_per_replica=1)
     config.configure_ipu_system()
 
-    hvd.init()
-
-    strategy = popdist_strategy.PopDistStrategy()
-
-    with strategy.scope():
+    with self.strategy.scope():
       learning_rate = 0.01
 
       model_tf = initialize_model_with_seed()
@@ -340,9 +331,9 @@ class DistributedTF2Test(tf.test.TestCase):
 
       @tf.function(jit_compile=True)
       def run_training_step_tf(x, y):
-        per_replica_loss = strategy.run(step_fn_tf, args=[x, y])
-        loss_reduced = strategy.reduce(tf.distribute.ReduceOp.SUM,
-                                       per_replica_loss)
+        per_replica_loss = self.strategy.run(step_fn_tf, args=[x, y])
+        loss_reduced = self.strategy.reduce(tf.distribute.ReduceOp.SUM,
+                                            per_replica_loss)
 
         return loss_reduced
 
@@ -402,9 +393,9 @@ class DistributedTF2Test(tf.test.TestCase):
 
       @tf.function(jit_compile=True)
       def run_eval_step_tf(x, y):
-        per_replica_loss = strategy.run(step_fn_eval_tf, args=[x, y])
-        loss_reduced = strategy.reduce(tf.distribute.ReduceOp.SUM,
-                                       per_replica_loss)
+        per_replica_loss = self.strategy.run(step_fn_eval_tf, args=[x, y])
+        loss_reduced = self.strategy.reduce(tf.distribute.ReduceOp.SUM,
+                                            per_replica_loss)
 
         return loss_reduced
 
@@ -495,11 +486,7 @@ class DistributedTF2Test(tf.test.TestCase):
     popdist.tensorflow.set_ipu_config(config, ipus_per_replica=1)
     config.configure_ipu_system()
 
-    hvd.init()
-
-    strategy = popdist_strategy.PopDistStrategy()
-
-    with strategy.scope():
+    with self.strategy.scope():
       dataset = tf.data.Dataset.from_tensor_slices(
           (input_sample, output_sample))
       dataset = dataset.repeat()

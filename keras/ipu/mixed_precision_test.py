@@ -18,8 +18,7 @@ import tensorflow.compat.v2 as tf
 
 from tensorflow.python.ipu.config import IPUConfig
 from tensorflow.python.ipu import ipu_strategy
-from tensorflow.python.ipu import horovod as hvd
-from tensorflow.python.ipu.horovod import popdist_strategy
+from tensorflow.python.ipu.distributed import popdist_strategy
 
 import keras
 from keras import testing_utils
@@ -60,8 +59,6 @@ class MixedPrecissionTest(tf.test.TestCase):
     config = IPUConfig()
     config.auto_select_ipus = 1
     config.configure_ipu_system()
-
-    hvd.init()
 
     strategy = popdist_strategy.PopDistStrategy()
     with strategy.scope():

@@ -23,8 +23,7 @@ from keras import Model, Input
 from keras import layers
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python import ipu
-from tensorflow.python.ipu.horovod import popdist_strategy
-from tensorflow.python.ipu import horovod as hvd
+from tensorflow.python.ipu.distributed import popdist_strategy
 
 
 def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
@@ -63,8 +62,6 @@ class PoprunPopDistStrategyTest(tf.test.TestCase, parameterized.TestCase):
     config = ipu.config.IPUConfig()
     popdist.tensorflow.set_ipu_config(config, ipus_per_replica=1)
     config.configure_ipu_system()
-
-    hvd.init()
 
     strategy = popdist_strategy.PopDistStrategy()
 

@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("@org_keras//keras:keras.bzl", "tf_py_test")
-# load("@local_poprun_configure//:poprun_build_defs.bzl", "mpirun_py_test", "poprun_py_test")
+load("@local_poprun_configure//:poprun_build_defs.bzl", "mpirun_py_test", "poprun_py_test")
 
 package(
     default_visibility = [
@@ -332,37 +332,37 @@ tf_py_test(
 #     ],
 # )
 
-# poprun_py_test(
-#     name = "distributed_test",
-#     size = "large",
-#     srcs = ["distributed_test.py"],
-#     main = "distributed_test.py",
-#     num_instances = 2,
-#     num_replicas = 8,
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras:combinations",
-#         "//keras/api:keras_api",
-#     ],
-# )
+poprun_py_test(
+    name = "distributed_test",
+    size = "large",
+    srcs = ["distributed_test.py"],
+    main = "distributed_test.py",
+    num_instances = 2,
+    num_replicas = 8,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
-# mpirun_py_test(
-#     name = "mixed_precision_test",
-#     size = "large",
-#     srcs = ["mixed_precision_test.py"],
-#     main = "mixed_precision_test.py",
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras:combinations",
-#         "//keras/api:keras_api",
-#     ],
-# )
+mpirun_py_test(
+    name = "mixed_precision_test",
+    size = "large",
+    srcs = ["mixed_precision_test.py"],
+    main = "mixed_precision_test.py",
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 tf_py_test(
     name = "serving_export_test",
@@ -380,22 +380,22 @@ tf_py_test(
     ],
 )
 
-# poprun_py_test(
-#     name = "poprun_popdist_strategy_test",
-#     size = "large",
-#     srcs = ["poprun_popdist_strategy_test.py"],
-#     main = "poprun_popdist_strategy_test.py",
-#     num_instances = 2,
-#     num_replicas = 2,
-#     deps = [
-#         "//:expect_absl_installed",
-#         "//:expect_numpy_installed",
-#         "//:expect_tensorflow_installed",
-#         "//keras",
-#         "//keras:combinations",
-#         "//keras/api:keras_api",
-#     ],
-# )
+poprun_py_test(
+    name = "poprun_popdist_strategy_test",
+    size = "large",
+    srcs = ["poprun_popdist_strategy_test.py"],
+    main = "poprun_popdist_strategy_test.py",
+    num_instances = 2,
+    num_replicas = 2,
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
 
 tf_py_test(
     name = "api_test",
