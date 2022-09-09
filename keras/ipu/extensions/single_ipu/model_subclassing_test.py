@@ -53,6 +53,42 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self._ipu_strategy_scope.__exit__(None, None, None)
     super(ModelSubclassingTest, self).tearDown()  # pylint: disable=super-with-arguments
 
+  def test_build_with_dtype(self):
+    class TypeCheckLayer(keras.layers.Layer):
+      # This layer will error if called subsequently with different dtypes.
+      def call(self, x):  # pylint: disable=arguments-differ
+        if not hasattr(self, "x_dtype"):
+          self.x_dtype = x.dtype
+        elif x.dtype != self.x_dtype:
+          raise TypeError(f"The dtype of `x` ({x.dtype.name}) does not match "
+                          f"the dtype of this layer ({self.x_dtype.name}).")
+        return x
+
+    class TestModel(keras.Model):  # pylint: disable=abstract-method
+      def __init__(self):
+        super().__init__()
+        self.layer = TypeCheckLayer()
+
+      def call(self, inputs):  # pylint: disable=arguments-differ
+        return self.layer(inputs)
+
+    batch_size = 1
+    x_dtype = np.int32
+    x_shape = [batch_size, 32]
+    x = np.ones(x_shape, dtype=x_dtype)
+
+    # Exception raised if build is called without specifying a dtype.
+    model = TestModel()
+    model.build(x_shape)
+    with self.assertRaisesRegex(TypeError, "The dtype of `x`"):
+      model.predict(x, batch_size=batch_size)
+
+    # Runs successfully if build is called with a dtype.
+    model = TestModel()
+    x_input = keras.Input(shape=x_shape, dtype=x_dtype)
+    model.build(x_input)
+    model.predict(x, batch_size=batch_size)
+
   def test_custom_build(self):
     class DummyModel(keras.Model):  # pylint: disable=abstract-method
       def __init__(self):

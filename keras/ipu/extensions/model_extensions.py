@@ -197,21 +197,24 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
         return {k: f(shape) for k, shape in input_shape.items()}
       return f(input_shape)
 
+    def is_from_keras_input_layer(x):
+      return hasattr(x, '_keras_history') and isinstance(
+          x._keras_history[0],  # pylint: disable=protected-access
+          input_layer.InputLayer)  # pylint: disable=protected-access
+
     def check_shape(x):
       valid_types = (tuple, list, tf.TensorShape, dict)
-      if not isinstance(x, valid_types):
+      if not isinstance(x, valid_types) and not is_from_keras_input_layer(x):
         raise ValueError(
             'Specified input shape is not one of the valid types. '
-            'Please specify a batch input shape of type tuple or '
-            'list of input shapes. User provided '
+            'Please specify a batch input shape of type tuple, a '
+            'list of input shapes, or a `keras.Input`. User provided '
             'input type: {}'.format(type(x)))
 
     map_shapes(input_shape, check_shape)
 
     def get_shape(x):
-      if hasattr(x, '_keras_history') and isinstance(
-          x._keras_history[0],  # pylint: disable=protected-access
-          input_layer.InputLayer):  # pylint: disable=protected-access
+      if is_from_keras_input_layer(x):
         # If input is a keras.Input tensor, extract the shape.
         return tuple(x.shape.as_list())
       # Otherwise, return the shape as-is.
@@ -585,11 +588,11 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
       try:
         return self.call(inputs, **kwargs)
       except (tf.errors.InvalidArgumentError, TypeError) as _error:
-        raise ValueError('You cannot build your model by calling `build` '
-                         'if your layers do not support float type inputs. '
-                         'Instead, in order to instantiate and build your '
-                         'model, `call` your model on real tensor data (of '
-                         'the correct dtype).') from _error
+        raise ValueError(
+            "You cannot pass a plain shape to your model's `build` function if "
+            "your layers do not support float type inputs. You must pass a "
+            "`keras.Input` object with the required dtype, or `call` your "
+            "model on real tensor data (of the correct dtype).") from _error
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _update_graph_network(self, inputs, outputs):
