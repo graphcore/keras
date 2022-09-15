@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""IPU specific Keras integration.
+"""
+IPU specific Keras integration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
 from tensorflow.python.util.tf_export import keras_export
