@@ -6,7 +6,7 @@ Keras with IPUs
 The Graphcore implementation of Keras includes support for the IPU.
 Keras model creation is no different than what you would use if you were
 training on other devices. To target the Poplar XLA device, Keras model creation
-must be inside the ``strategy.scope`` of an ``IPUStrategy``.
+must be inside the ``strategy.scope`` of an :py:class:`~tensorflow.python.ipu.ipu_strategy.IPUStrategy`.
 
 For a more practical walkthrough, see :tutorials-repo:`this tutorial about using Keras on the IPU <tutorials/tensorflow2/keras>` from the Graphcore tutorials repository.
 
@@ -15,7 +15,7 @@ Single IPU models
 
 You can train, evaluate or run inference on single-IPU models through the Keras
 APIs as you would with other accelerators, as long as you create the model
-inside the scope of an ``IPUStrategy``:
+inside the scope of an :py:class:`~tensorflow.python.ipu.ipu_strategy.IPUStrategy`:
 
 .. literalinclude:: example1.py
   :language: python
@@ -69,7 +69,7 @@ For example, if we have a model where each step is of batch size 16 and we set
 batch of size 64.
 
 Gradient accumulation can be easily enabled for Keras models created inside of
-an ``IPUStrategy`` by calling the following methods:
+an :py:class:`~tensorflow.python.ipu.ipu_strategy.IPUStrategy` by calling the following methods:
 
 .. table::
   :width: 100%
@@ -185,7 +185,7 @@ Pipelining a model you are writing yourself
 ===========================================
 
 To pipeline a ``Functional`` model you are writing yourself, each layer call
-must happen within the scope of an `keras.ipu.PipelineStage` context.
+must happen within the scope of an :py:class:`keras.ipu.PipelineStage` context.
 
 For example, a simple four layer ``Functional`` model could be assigned to two
 different pipeline stages as follows:
@@ -198,10 +198,10 @@ different pipeline stages as follows:
 
 .. note::
 
-  Layers *constructed* within a `keras.ipu.PipelineStage` context will have that
+  Layers *constructed* within a :py:class:`~keras.ipu.PipelineStage` context will have that
   pipeline stage assigned to all invocations of the layer. These assignments are
   overridden if the layer calls happen within a different
-  `keras.ipu.PipelineStage` context.
+  :py:class:`~keras.ipu.PipelineStage` context.
 
 Pipelining an existing functional model
 =======================================
@@ -209,7 +209,7 @@ Pipelining an existing functional model
 To pipeline an existing ``Functional`` model, you can use
 :py:meth:`~keras.ipu.extensions.FunctionalExtension.get_pipeline_stage_assignment`.
 Each layer invocation in the model has an associated
-:py:class:`~keras.ipu.extensions.FunctionalLayerPipelineStageAssignment`
+:py:class:`~keras.ipu.FunctionalLayerPipelineStageAssignment`
 object, which indicates what pipeline stage that invocation is assigned to.
 `get_pipeline_stage_assignment` returns a list of these stage assignments,
 which you can inspect and modify. Note that the list is in post-order, which
@@ -270,10 +270,10 @@ different pipeline stages as follows:
 
 .. note::
 
-  Layers *constructed* within a `keras.ipu.PipelineStage` context will have that
+  Layers *constructed* within a :py:class:`~keras.ipu.PipelineStage` context will have that
   pipeline stage assigned to all invocations of the layer. These assignments are
   overridden if the layer calls happen within a different
-  `keras.ipu.PipelineStage` context.
+  :py:class:`~keras.ipu.PipelineStage` context.
 
 Pipelining an existing model
 ============================
@@ -281,9 +281,10 @@ Pipelining an existing model
 To pipeline an existing ``Model`` subclass, you must use
 :py:meth:`~keras.ipu.extensions.ModelExtension.get_pipeline_stage_assignment`.
 Each layer invocation in the model has an associated
-:py:class:`~keras.ipu.extensions.ModelLayerPipelineStageAssignment`
+:py:class:`~keras.ipu.ModelLayerPipelineStageAssignment`
 object, which indicates what pipeline stage that invocation is assigned to.
-`get_pipeline_stage_assignment` returns a list of these stage assignments,
+:py:meth:`~keras.ipu.extensions.ModelExtension.get_pipeline_stage_assignment`
+returns a list of these stage assignments,
 which you can inspect and modify. Note that the list is in post-order, which
 means the assignments are returned in the order they will be executed.
 
@@ -419,15 +420,17 @@ See the respective API documentation for more details.
 Configuring Infeeds and Outfeed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Keras models created inside of an ``IPUStrategy`` scope automatically create
-``IPUInfeedQueue`` and ``IPUOutfeedQueue`` data queues for efficiently feeding
-data to and from the IPU devices when using ``fit()``, ``evaluate()`` and
-``predict()``.
+Keras models created inside of an :py:class:`~tensorflow.python.ipu.ipu_strategy.IPUStrategy` scope
+automatically create :py:class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue` and
+:py:class:`~tensorflow.python.ipu.ipu_outfeed_queue.OutfeedQueue` data queues for efficiently feeding
+data to and from the IPU devices when using ``fit()``, ``evaluate()`` and ``predict()``.
 
-Instances of ``IPUInfeedQueue`` and ``IPUOutfeedQueue`` can be created with
-optional arguments which can affect performance of the model.
+Instances of :py:class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue` and
+:py:class:`~tensorflow.python.ipu.ipu_outfeed_queue.OutfeedQueue` can be created with optional arguments
+which can affect performance of the model.
 
-Use the following methods to configure the ``IPUInfeedQueue`` for your Keras model:
+Use the following methods to configure the 
+:py:class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue` for your Keras model:
 
 .. table::
   :width: 100%
@@ -441,7 +444,7 @@ Use the following methods to configure the ``IPUInfeedQueue`` for your Keras mod
   +----------------------+-------------------------------------------------------------------------------+
 
 
-Use the following methods to configure the ``IPUOutfeedQueue`` for your Keras model:
+Use the following methods to configure the :py:class:`~tensorflow.python.ipu.ipu_outfeed_queue.OutfeedQueue` for your Keras model:
 
 .. table::
   :width: 100%
@@ -455,8 +458,8 @@ Use the following methods to configure the ``IPUOutfeedQueue`` for your Keras mo
   +--------------------+--------------------------------------------------------------------------------+
 
 
-For example the ``prefetch_depth`` parameter of the ``IPUInfeedQueue`` and the
-``buffer_depth`` parameter of the ``IPUOutfeedQueue`` can be configured as
+For example the ``prefetch_depth`` parameter of the :py:class:`~tensorflow.python.ipu.ipu_outfeed_queue.OutfeedQueue` and the
+``buffer_depth`` parameter of the :py:class:`~tensorflow.python.ipu.ipu_outfeed_queue.OutfeedQueue` can be configured as
 follows:
 
 .. literalinclude:: example10.py
@@ -579,7 +582,7 @@ The model also performs a preprocessing step (on the CPU) to convert string tens
 IPU-specific Keras layers and optimizers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The `ipu_tensorflow_addons.keras.layers` namespace contains IPU-specific
+The :py:mod:`ipu_tensorflow_addons.keras.layers` namespace contains IPU-specific
 implementations of standard Keras layers and optimizers. More information,
 including details of every layer and optimizer in this namespace and a code
 example showing how to use it can be found in :numref:`ipu-tensorflow-addons`.
@@ -590,7 +593,7 @@ Implementation details
 ~~~~~~~~~~~~~~~~~~~~~~
 
 When instantiating a standard TensorFlow Keras model inside the scope of
-an `IPUStrategy` instance, it is dynamically injected with additional,
+an :py:class:`~tensorflow.python.ipu.ipu_strategy.IPUStrategy` instance, it is dynamically injected with additional,
 IPU-specific, functions.
 This is done through the relevant *IPU Keras extension classes*:
 

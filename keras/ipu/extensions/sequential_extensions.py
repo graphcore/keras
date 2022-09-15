@@ -32,11 +32,11 @@ class SequentialLayerPipelineStageAssignment:
   model should be executed in.
   """
   def __init__(self, layer, pipeline_stage=None):
-    """Create a new `SequentialLayerPipelineStageAssignment`.
+    """Create a new
+    :class:`~keras.ipu.SequentialLayerPipelineStageAssignment`.
 
     Args:
-      layer (keras.layers.Layer): The Keras layer for which this assignment is
-        for.
+      layer (keras.layers.Layer): The Keras layer which this assignment is for.
       pipeline_stage (int): If provided, indicates which pipeline stage this
         layer should be assigned to. If not provided this layer will be
         unassigned.
@@ -57,8 +57,8 @@ class SequentialLayerPipelineStageAssignment:
 
   @pipeline_stage.setter
   def pipeline_stage(self, value):
-    """Setter of `pipeline_stage` property. See `pipeline_stage` property
-    doc.
+    """Setter of :py:meth:`~keras.ipu.SequentialExtension.pipeline_stage`
+    property.
 
     Args:
       value (int): The pipeline stage to assign this layer to."""
@@ -147,7 +147,7 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     return self.pop(__extension_delegate=False)
 
   def set_asynchronous_callbacks(self, asynchronous=False):
-    """Sets the asynchronous callbacks options when calling `fit()`, `evaluate()`
+    """Sets the asynchronous callback options when calling `fit()`, `evaluate()`
     and `predict()`.
 
     When running `fit()`, `evaluate()` and `predict()`, the callback functions
@@ -161,10 +161,12 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
 
     Note that this option is ignored for `fit()` and `evaluate()` when
     running a pipelined model and `accumulate_outfeed=True` (configured via
-    `set_pipelining_options`).
+    :py:meth:`~keras.ipu.extensions.SequentialExtension.set_pipelining_options`
+    ).
 
     Args:
-      asynchronous: Whether asynchronous callbacks should be enabled.
+      asynchronous: If `True`, enables asynchronous callbacks. Defalts to
+        `False`.
     """
     self._set_asynchronous_callbacks_impl(asynchronous)
 
@@ -184,7 +186,7 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     `gradient_accumulation_steps_per_replica` steps, these accumulated gradients
     are then all-reduced across the replicas and the weight update is performed.
 
-    Gradient Accumulation allows us to simulate bigger batch sizes. For example
+    Gradient accumulation allows us to simulate bigger batch sizes. For example
     if we have a model where each step is of batch size 16 and we set
     `gradient_accumulation_steps_per_replica=4` and there is single replica in
     the system, this simulates an input batch of size 64.
@@ -192,8 +194,7 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     `gradient_accumulation_steps_per_replica=4` and there are 4 replicas in
     the system, this simulates an input batch of size 256.
 
-    See the :ref:`gradient-accumulation` section in the documention for more
-    details.
+    See the :ref:`gradient-accumulation` section for more details.
 
     The value of `gradient_accumulation_steps_per_replica` has no effect when
     using `evaluate()` or `predict()`.
@@ -206,9 +207,10 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     Args:
       gradient_accumulation_steps_per_replica: An integer which indicates the
         number of steps the gradients will be accumulated for in each replica.
-        This value multiplied by the number of replicas needs to divide the
-        `steps_per_execution` value the model has been compiled with. This value
-        is saved/loaded when the model is saved/loaded.
+        The `steps_per_execution` value used when compiling the model must be
+        divisible by the `gradient_accumulation_steps_per_replica` multiplied
+        by the number of replicas. This value is saved/loaded when the model
+        is saved/loaded.
       reduction_method: Reduction method to use when accumulating gradients.
         During the iterations in each optimizer step, the computed gradients
         can either be directly summed up or scaled such that we compute a mean
@@ -217,7 +219,7 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
         float16, but gives smaller gradients and might require adjusting
         the learning-rate accordingly.
         Defaults to `GradientAccumulationReductionMethod.SUM`
-        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
+        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`).
       gradient_accumulation_optimizer_kwargs: All remaining keyword arguments
         are forwarded to
         :class:`~tensorflow.python.ipu.optimizers.GradientAccumulationOptimizerV2`.
@@ -239,18 +241,19 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
                              accumulate_outfeed=None,
                              gradient_accumulation_reduction_method='sum',
                              **pipelining_kwargs):
+    # pylint: disable=line-too-long
     """Sets the pipelining options, including gradient accumulation options,
     for pipelined models.
 
-    Before training a pipelined model, `gradient_accumulation_steps_per_replica`
-    argument needs to be set as pipelined models always perform gradient
-    accumulation when training. Setting
+    Before training a pipelined model,
+    the `gradient_accumulation_steps_per_replica` argument needs to be set as
+    pipelined models always perform gradient accumulation when training. Setting
     `gradient_accumulation_steps_per_replica > 1` means that each replica will
     accumulate the gradients for `gradient_accumulation_steps_per_replica`
     steps, these accumulated gradients are then all-reduced across the replicas
     and the weight update is performed.
 
-    Gradient Accumulation allows us to simulate bigger batch sizes. For example
+    Gradient accumulation allows us to simulate bigger batch sizes. For example
     if we have a model where each step is of batch size 16 and we set
     `gradient_accumulation_steps_per_replica=4` and there is single replica in
     the system, this simulates an input batch of size 64.
@@ -263,8 +266,7 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     performed after each replica has performed
     `gradient_accumulation_steps_per_replica` steps instead of after each step.
 
-    See the :ref:`gradient-accumulation` section in the documention for more
-    details.
+    See the :ref:`gradient-accumulation` section for more details.
 
     The value of `gradient_accumulation_steps_per_replica` has no effect when
     using `evaluate()` or `predict()`.
@@ -277,9 +279,10 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     Args:
       gradient_accumulation_steps_per_replica: An integer which indicates the
         number of steps the gradients will be accumulated for in each replica.
-        This value multiplied by the number of replicas needs to divide the
-        `steps_per_execution` value the model has been compiled with. This value
-        is saved/loaded when the model is saved/loaded.
+        The `steps_per_execution` value used when compiling the model must be
+        divisible by the `gradient_accumulation_steps_per_replica` multiplied
+        by the number of replicas. This value is saved/loaded when the model
+        is saved/loaded.
       device_mapping: If provided, a list of length equal to the number of
         pipeline stages assigned in this model. An element at index `i` in the
         list represents which IPU the `i`'th pipeline stage should reside on.
@@ -305,26 +308,29 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
         accumulation especially when using float16, but gives smaller gradients
         and might require adjusting the learning-rate accordingly.
         Defaults to `GradientAccumulationReductionMethod.SUM`
-        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
+        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`).
       pipelining_kwargs: All remaining keyword arguments are forwarded to
         :func:`~tensorflow.python.ipu.pipelining_ops.pipeline`. Note that this
         dictionary is not serializable, which means that when the model is
         being saved, these values are not saved. When restoring/loading a model,
         please call `set_pipelining_options` again.
     """
+    # pylint: enable=line-too-long
     self._set_pipelining_options_impl(gradient_accumulation_steps_per_replica,
                                       device_mapping, accumulate_outfeed,
                                       gradient_accumulation_reduction_method,
                                       pipelining_kwargs)
 
   def set_infeed_queue_options(self, **kwargs):
-    """Sets the options for all instances of `IPUInfeedQueue` generated
-    when executing the model.
+    """Sets the options for all instances of
+    :class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue`
+    generated when executing the model.
 
     When using `fit()`, `evalute()` and `predict()`, an instance of
     :class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue` is created
     to efficiently feed data from the dataset to the device. Instances of
-    `IPUInfeedQueue` can be created with optional arguments, such as
+    :class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue`
+    can be created with optional arguments, such as
     `prefetch_depth`, which can increase the throughput of the model.
 
     Args:
@@ -334,13 +340,15 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     self._set_infeed_queue_options_impl(**kwargs)
 
   def set_outfeed_queue_options(self, **kwargs):
-    """Sets the options for all instances of `IPUOutfeedQueue` generated
-    when executing the model.
+    """Sets the options for all instances of
+    :class:`~tensorflow.python.ipu.ipu_outfeed_queue.IPUOutfeedQueue`
+    generated when executing the model.
 
     When using `fit()`, `evalute()` and `predict()`, an instance of
-    :class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUOutfeedQueue` is created
+    :class:`~tensorflow.python.ipu.ipu_outfeed_queue.IPUOutfeedQueue` is created
     to efficiently feed data from the device to the host. Instances of
-    `IPUOutfeedQueue` can be created with optional arguments, such as
+    :class:`~tensorflow.python.ipu.ipu_outfeed_queue.IPUOutfeedQueue`
+    can be created with optional arguments, such as
     `buffer_depth`, which can increase the throughput of the model.
 
     Args:
@@ -397,11 +405,11 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
   def get_pipeline_stage_assignment(self):
     """Returns the pipeline stage assignment of the layers in the model.
 
-    If `set_pipeline_stage_assignment()` has been called before, then it returns
-    a copy of the current assignment, otherwise returns a list of
-    `SequentialLayerPipelineStageAssignment` for each layer in the model in
-    post order (which means that layers are returned in the order they are
-    executed).
+    If :py:meth:`~.set_pipeline_stage_assignment` has been called before,
+    then it returns a copy of the current assignment, otherwise returns a
+    list of :py:class:`~keras.ipu.SequentialLayerPipelineStageAssignment`
+    for each layer in the model in post order (which means that layers
+    are returned in the order they are executed).
     """
     if self._pipeline_stage_assignment:
       if not self._pipeline_stage_assignment_valid:
@@ -464,10 +472,11 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     Args:
       pipeline_stage_assignment: A list of the same length as the number of
         layers in this model. All elements can be either intergers or instances
-        of `SequentialLayerPipelineStageAssignment`. If all the elements are
-        integers, then a layer in this model at index `i` is assigned to a
-        pipeline stage `pipeline_stage_assignment[i]`. Otherwise, if all the
-        elements are of type `SequentialLayerPipelineStageAssignment` then a
+        of :class:`~keras.ipu.SequentialLayerPipelineStageAssignment`. If all
+        the elements are integers, then a layer in this model at index `i` is
+        assigned to a pipeline stage `pipeline_stage_assignment[i]`. Otherwise,
+        if all the elements are of type
+        :class:`~keras.ipu.SequentialLayerPipelineStageAssignment` then a
         layer in this model at index `i` is assigned to a pipeline stage
         indicated by `pipeline_stage_assignment[i].pipeline_stage`.
 
@@ -525,8 +534,8 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     """Prints a summary of the pipeline stage assignment of the model.
 
     Arguments:
-        line_length: Total length of printed lines (e.g. set this to adapt the
-          display to different terminal window sizes).
+        line_length: Total length of printed lines (for example, set this to
+          adapt the display to different terminal window sizes).
         print_fn: Print function to use. It will be called on each line of the
           summary. You can set it to a custom function in order to capture the
           string summary. It defaults to `print` (prints to stdout).
