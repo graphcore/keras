@@ -29,6 +29,46 @@ filegroup(
 )
 
 keras_docs_py_test(
+    name = "als_example1",
+    size = "large",
+    srcs = ["als_example1.py"],
+    main = "als_example1.py",
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "als_example1_non_keras",
+    size = "large",
+    srcs = ["als_example1_non_keras.py"],
+    main = "als_example1_non_keras.py",
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "als_example2",
+    size = "large",
+    srcs = ["als_example2.py"],
+    main = "als_example2.py",
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "als_example2_non_keras",
+    size = "large",
+    srcs = ["als_example2_non_keras.py"],
+    main = "als_example2_non_keras.py",
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
+    name = "als_example3",
+    size = "large",
+    srcs = ["als_example3.py"],
+    main = "als_example3.py",
+    deps = ["//keras"],
+)
+
+keras_docs_py_test(
     name = "example1",
     size = "large",
     srcs = ["example1.py"],
