@@ -148,6 +148,9 @@ time and may be useful when debugging your model.
 A detailed explanation of pipelining can be found in the technical note on `Model parallelism with
 TensorFlow: sharding and pipelining <https://docs.graphcore.ai/projects/tf-model-parallelism/en/latest/pipelining.html>`_.
 
+Recomputation of activations can be enabled to reduce memory usage. See
+:numref:`recomputation` for further details on when and how to use it.
+
 The method to pipeline your model depends on whether your model is a
 ``Sequential`` model, a ``Functional`` model, or is subclassed from the ``Model``
 class.
