@@ -17,6 +17,8 @@ Optimizer wrapper for automatic loss scaling
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
+from dataclasses import dataclass
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,6 +31,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer as tf_optimizer
 
+from tensorflow.python.util import lazy_loader
+puo = lazy_loader.LazyLoader(
+    "parameter_unscaling_optimizer", globals(),
+    "keras.ipu.optimizers.parameter_unscaling_optimizer")
+
 import keras
 from keras import backend as K
 from keras.optimizer_v2.optimizer_v2 import OptimizerV2
@@ -38,6 +45,18 @@ from keras.ipu.optimizers.gradient_accumulation_optimizer import GradientAccumul
 
 def _is_power_of_two(x):
   return (x & (x - 1) == 0) and x != 0
+
+
+@dataclass
+class ALSDefaults:
+  initial_loss_scaling_factor = 1
+  update_frequency = 8
+  increase_factor = 2
+  max_loss_scaling_factor = 32768
+  accumulate_statistics_over_update_period = True
+  ratio_threshold = 10e-6
+  captured_grads_only = False
+  lpf_alpha = 0.0
 
 
 class ALSOptimizer(_OptimizerV2Wrapper):
@@ -109,17 +128,19 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
       loss = strategy.run(f, args=[x, t])
   """
-  def __init__(self,
-               opt,
-               initial_loss_scaling_factor=1,
-               update_frequency=8,
-               increase_factor=2,
-               max_loss_scaling_factor=32768,
-               accumulate_statistics_over_update_period=True,
-               ratio_threshold=10e-6,
-               captured_grads_only=False,
-               lpf_alpha=0.0,
-               name="ALSOptimizer"):
+  def __init__(
+      self,
+      opt,
+      initial_loss_scaling_factor=ALSDefaults.initial_loss_scaling_factor,
+      update_frequency=ALSDefaults.update_frequency,
+      increase_factor=ALSDefaults.increase_factor,
+      max_loss_scaling_factor=ALSDefaults.max_loss_scaling_factor,
+      accumulate_statistics_over_update_period=ALSDefaults.
+      accumulate_statistics_over_update_period,
+      ratio_threshold=ALSDefaults.ratio_threshold,
+      captured_grads_only=ALSDefaults.captured_grads_only,
+      lpf_alpha=ALSDefaults.lpf_alpha,
+      name="ALSOptimizer"):
     """Construct a new automatic loss scaling optimizer.
 
     Args:
@@ -191,6 +212,13 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     self._lsf = OptimizerV2.add_weight(
         self,
         'loss_scaling_factor', (),
+        dtype=dtypes.float32,
+        initializer=keras.initializers.Constant(initial_loss_scaling_factor),
+        trainable=False)
+
+    self._prev_lsf = OptimizerV2.add_weight(
+        self,
+        'prev_loss_scaling_factor', (),
         dtype=dtypes.float32,
         initializer=keras.initializers.Constant(initial_loss_scaling_factor),
         trainable=False)
@@ -302,48 +330,73 @@ class ALSOptimizer(_OptimizerV2Wrapper):
                                            clip_levels,
                                            absolute_of_input=True)
 
-  def get_unscaled_gradients(self, grads):
-    """Collects statistics from LSF scaled gradients and returns the
-    same gradients unscaled.
+  def _add_grads(self, grads):
+    """Collects statistics from LSF scaled gradients.
 
     Args:
       grads: The gradients to be unscaled. These gradients should be
       computed from an LSF scaled loss.
-
-    Returns:
-      The unscaled gradients.
     """
     update_hist = self._should_update_hist()
-    grads_rescaled = []
 
-    def do_update_and_rescale(g, h, rescaled):
+    def do_update(g, h):
       # Add grads to histogram. If we are using only explicitly captured
       # gradients (passed via apply_gradients 'captured_grads' kwarg), then
       # skip the histogram update as these will be handled in apply_gradients.
       captured_only = self._get_hyper('captured_grads_only')
-      h = control_flow_ops.cond(
+      return control_flow_ops.cond(
           math_ops.logical_and(update_hist,
                                math_ops.logical_not(captured_only)),
           lambda: self._get_updated_hist(g, h), lambda: h)
-
-      # Rescale grads.
-      g_rescaled = g / math_ops.cast(self._lsf, g.dtype)
-
-      rescaled.append(g_rescaled)
-      return h
 
     hist = self._hist
     is_list = isinstance(grads, list)
     if is_list:
       for g in grads:
-        hist = do_update_and_rescale(g, hist, grads_rescaled)
+        hist = do_update(g, hist)
     else:
-      hist = do_update_and_rescale(grads, hist, grads_rescaled)
+      hist = do_update(grads, hist)
 
-    grads_unscaled = grads_rescaled if is_list else grads_rescaled[0]
     self._update_histogram(hist)
 
-    return grads_unscaled
+  def _get_unscaled_gradients(self, grads):
+    """Unscales the LSF scaled gradients.
+
+    Args:
+      grads: The gradients to be unscaled. These gradients should be
+      computed from an LSF scaled loss. If the wrapped optimizer is
+      an instance of a specialization in
+      `keras.ipu.optimizers.als_optimizer_specializations`, then a
+      no-op is performed (i.e. identity) as the rescaling will instead
+      be performed in the optimizer specialization.
+
+    Returns:
+      The unscaled gradients.
+    """
+    if isinstance(self._opt, puo._ParameterUnscalingOptimizer):  # pylint: disable=protected-access
+      # Do a sanity check; we should only have one of these optimizer types
+      # if this ALSOptimizer is a _ParameterUnscalingALSOptimizer.
+      if not isinstance(self, puo._ParameterUnscalingALSOptimizer):  # pylint: disable=protected-access
+        raise ValueError(
+            "ALSOptimizer has been used to wrap an instance of "
+            "_ParameterUnscalingOptimizer, but is not itself an instance "
+            "of _ParameterUnscalingALSOptimizer.")
+
+      return grads
+
+    grads_rescaled = []
+
+    def do_rescale(g, rescaled):
+      rescaled.append(g / math_ops.cast(self.loss_scaling_factor, g.dtype))
+
+    is_list = isinstance(grads, list)
+    if is_list:
+      for g in grads:
+        do_rescale(g, grads_rescaled)
+    else:
+      do_rescale(grads, grads_rescaled)
+
+    return grads_rescaled if is_list else grads_rescaled[0]
 
   def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
     """Compute gradients of a scaled loss w.r.t. a given list of variables.
@@ -416,6 +469,9 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     lsf = control_flow_ops.cond(do_lsf_update, lambda: _get_updated_lsf(hist),
                                 lambda: self._lsf)
 
+    prev_lsf = control_flow_ops.cond(math_ops.equal(lsf, self._lsf),
+                                     lambda: self._prev_lsf, lambda: self._lsf)
+
     # Reset the gradient histogram if we have performed an LSF update.
     hist = control_flow_ops.cond(do_lsf_update,
                                  lambda: array_ops.zeros_like(hist),
@@ -425,8 +481,13 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     n = control_flow_ops.cond(do_lsf_update, lambda: 0, lambda: self._n + 1)
 
     self._assign_var(self._lsf, lsf)
+    self._assign_var(self._prev_lsf, prev_lsf)
     self._update_histogram(hist, skip_lpf=do_lsf_update)
     self._assign_var(self._n, n)
+
+    if isinstance(self._opt, puo._ParameterUnscalingOptimizer):  # pylint: disable=protected-access
+      self._opt._lsf = ops.convert_to_tensor(self._lsf)  # pylint: disable=protected-access
+      self._opt._prev_lsf = ops.convert_to_tensor(self._prev_lsf)  # pylint: disable=protected-access
 
   def apply_gradients(  #pylint: disable=arguments-differ
       self,
@@ -457,7 +518,8 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     # the update.
     grads_and_vars_rescaled = []
     for g, v in grads_and_vars:
-      gv = (self.get_unscaled_gradients(g), v)
+      self._add_grads(g)
+      gv = (self._get_unscaled_gradients(g), v)
       grads_and_vars_rescaled.append(gv)
 
     # Update ALSOptimizer internal state.
@@ -539,6 +601,14 @@ class ALSOptimizer(_OptimizerV2Wrapper):
   @loss_scaling_factor.setter
   def loss_scaling_factor(self, _):
     raise ValueError("loss_scaling_factor is a read only property.")
+
+  @property
+  def previous_loss_scaling_factor(self):
+    return ops.convert_to_tensor(self._prev_lsf)
+
+  @previous_loss_scaling_factor.setter
+  def previous_loss_scaling_factor(self, _):
+    raise ValueError("previous_loss_scaling_factor is a read only property.")
 
   @property
   def update_counter(self):
@@ -721,7 +791,8 @@ class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
     # the update.
     grads_and_vars_rescaled = []
     for g, v in grads_and_vars:
-      gv = (self.als_optimizer.get_unscaled_gradients(g), v)
+      self.als_optimizer._add_grads(g)  # pylint: disable=protected-access
+      gv = (self.als_optimizer._get_unscaled_gradients(g), v)  # pylint: disable=protected-access
       grads_and_vars_rescaled.append(gv)
 
     # Update ALSOptimizer internal state.
@@ -747,6 +818,10 @@ class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
   @property
   def loss_scaling_factor(self):
     return self.als_optimizer.loss_scaling_factor
+
+  @property
+  def previous_loss_scaling_factor(self):
+    return self.als_optimizer.previous_loss_scaling_factor
 
   @property
   def update_counter(self):

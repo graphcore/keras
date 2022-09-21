@@ -17,6 +17,9 @@ Keras Optimizer specializations for the Graphcore IPU
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 """
 
+from keras.ipu.optimizers.adam import ALSOptimizerAdam
 from keras.ipu.optimizers.als_optimizer import ALSOptimizer
 from keras.ipu.optimizers.als_optimizer import ALSGradientAccumulationOptimizer
 from keras.ipu.optimizers.gradient_accumulation_optimizer import GradientAccumulationOptimizer
+from keras.ipu.optimizers.gradient_descent import ALSOptimizerSGD
+from keras.ipu.optimizers.rmsprop import ALSOptimizerRMSProp

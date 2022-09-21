@@ -19,6 +19,9 @@ import tensorflow.compat.v2 as tf
 from tensorflow.compiler.plugin.poplar.driver import threestate_pb2
 
 from keras.ipu.optimizers import ALSOptimizer
+from keras.ipu.optimizers import ALSOptimizerAdam
+from keras.ipu.optimizers import ALSOptimizerRMSProp
+from keras.ipu.optimizers import ALSOptimizerSGD
 from keras.ipu.optimizers import ALSGradientAccumulationOptimizer
 from keras.ipu.optimizers import GradientAccumulationOptimizer
 from keras.optimizer_v2 import gradient_descent
@@ -30,6 +33,18 @@ def sgd_fn():
 
 def als_opt_fn():
   return ALSOptimizer(sgd_fn())
+
+
+def als_opt_adam_fn():
+  return ALSOptimizerAdam()
+
+
+def als_opt_rmsprop_fn():
+  return ALSOptimizerRMSProp()
+
+
+def als_opt_sgd_fn():
+  return ALSOptimizerSGD()
 
 
 def als_grad_accum_opt_fn():
@@ -52,6 +67,15 @@ def grad_accum_opt_fn():
 TEST_CASES = [{
     'testcase_name': 'ALSOptimizer',
     'opt_fn': als_opt_fn,
+}, {
+    'testcase_name': 'ALSOptimizerAdam',
+    'opt_fn': als_opt_adam_fn,
+}, {
+    'testcase_name': 'ALSOptimizerRMSProp',
+    'opt_fn': als_opt_rmsprop_fn,
+}, {
+    'testcase_name': 'ALSOptimizerSGD',
+    'opt_fn': als_opt_sgd_fn,
 }, {
     'testcase_name': 'ALSGradientAccumulationOptimizer',
     'opt_fn': als_grad_accum_opt_fn,

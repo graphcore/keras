@@ -32,9 +32,13 @@ py_library(
     name = "optimizers",
     srcs = [
         "__init__.py",
+        "adam.py",
         "als_optimizer.py",
         "gradient_accumulation_optimizer.py",
+        "gradient_descent.py",
         "optimizer_v2_wrapper.py",
+        "parameter_unscaling_optimizer.py",
+        "rmsprop.py",
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
@@ -69,6 +73,23 @@ tf_py_test(
     shard_count = 32,
     deps = [
         ":als_optimizer_test_utils",
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras/api:keras_api",
+    ],
+)
+
+tf_py_test(
+    name = "als_optimizer_specializations_test",
+    size = "large",
+    srcs = [
+        "als_optimizer_specializations_test.py",
+    ],
+    python_version = "PY3",
+    shard_count = 6,
+    deps = [
         "//:expect_absl_installed",
         "//:expect_numpy_installed",
         "//:expect_tensorflow_installed",
