@@ -53,6 +53,9 @@ class _OptimizerV2Wrapper(OptimizerV2):
       name: The name of the attribute to set.
       value: The value to set.
     """
+    if name == 'lr':
+      name = 'learning_rate'
+
     # Delegate setting hyperparameter to inner optimizer if the attribute does
     # not exist.
     try:
@@ -83,6 +86,9 @@ class _OptimizerV2Wrapper(OptimizerV2):
         # Avoid infinite recursion
         raise e
 
+      if name == 'lr':
+        name = 'learning_rate'
+
       # Delegate hyperparameter accesses to inner optimizer.
       if name in self._opt._hyper:  # pylint: disable=protected-access
         return self._opt._get_hyper(name)  # pylint: disable=protected-access
@@ -94,7 +100,10 @@ class _OptimizerV2Wrapper(OptimizerV2):
     result = set(super().__dir__())
 
     if '_opt' in result:
-      result |= self._opt._hyper.keys()  # pylint: disable=protected-access
+      keys = self._opt._hyper.keya()  # pylint: disable=protected-access
+      result |= keys
+      if 'learning_rate' in keys:
+        result.add('lr')
     return list(result)
 
   def _create_slots(self, var_list):
