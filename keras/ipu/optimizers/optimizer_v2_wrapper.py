@@ -100,7 +100,7 @@ class _OptimizerV2Wrapper(OptimizerV2):
     result = set(super().__dir__())
 
     if '_opt' in result:
-      keys = self._opt._hyper.keya()  # pylint: disable=protected-access
+      keys = self._opt._hyper.keys()  # pylint: disable=protected-access
       result |= keys
       if 'learning_rate' in keys:
         result.add('lr')
