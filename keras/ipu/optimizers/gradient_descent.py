@@ -104,6 +104,7 @@ class ALSOptimizerSGD(puo._ParameterUnscalingALSOptimizer):  # pylint: disable=p
       captured_grads_only=ALSDefaults.captured_grads_only,
       lpf_alpha=ALSDefaults.lpf_alpha,
       histogram_bin_edge=ALSDefaults.histogram_bin_edge,
+      replication_factor=ALSDefaults.replication_factor,
       name="ALSOptimizerSGD"):
     opt = _ParameterUnscalingSGD(
         learning_rate=learning_rate,
@@ -121,6 +122,7 @@ class ALSOptimizerSGD(puo._ParameterUnscalingALSOptimizer):  # pylint: disable=p
                      captured_grads_only=captured_grads_only,
                      lpf_alpha=lpf_alpha,
                      histogram_bin_edge=histogram_bin_edge,
+                     replication_factor=replication_factor,
                      name=name)
 
   def get_config(self):

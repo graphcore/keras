@@ -61,6 +61,7 @@ class _ParameterUnscalingALSOptimizer(ALSOptimizer):
       captured_grads_only=ALSDefaults.captured_grads_only,
       lpf_alpha=ALSDefaults.lpf_alpha,
       histogram_bin_edge=ALSDefaults.histogram_bin_edge,
+      replication_factor=ALSDefaults.replication_factor,
       name="_ParameterUnscalingALSOptimizer"):
     if not isinstance(opt, _ParameterUnscalingOptimizer):
       raise ValueError(
@@ -78,4 +79,5 @@ class _ParameterUnscalingALSOptimizer(ALSOptimizer):
                      captured_grads_only=captured_grads_only,
                      lpf_alpha=lpf_alpha,
                      histogram_bin_edge=histogram_bin_edge,
+                     replication_factor=replication_factor,
                      name=name)

@@ -57,6 +57,7 @@ class ALSDefaults:
   captured_grads_only = False
   lpf_alpha = 0.0
   histogram_bin_edge = 2**13
+  replication_factor = 1
 
 
 class ALSOptimizer(_OptimizerV2Wrapper):
@@ -141,6 +142,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       captured_grads_only=ALSDefaults.captured_grads_only,
       lpf_alpha=ALSDefaults.lpf_alpha,
       histogram_bin_edge=ALSDefaults.histogram_bin_edge,
+      replication_factor=ALSDefaults.replication_factor,
       name="ALSOptimizer"):
     """Construct a new automatic loss scaling optimizer.
 
@@ -183,6 +185,9 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       histogram_bin_edge: The magnitude at which gradients are considered
         to have overflowed.
         Defaults to 2^13.
+      replication_factor: The number of replicas in use. Gradients are divided
+        by `replication_factor` prior to being processed by the ALS algorithm.
+        Defaults to 1.
       name: Optional name prefix for the operation created when applying
         gradients.
         Defaults to "ALSOptimizer".
@@ -199,6 +204,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     self.captured_grads_only = captured_grads_only
     self.lpf_alpha = lpf_alpha
     self.histogram_bin_edge = histogram_bin_edge
+    self.replication_factor = replication_factor
 
     # Start with no collected stats.
     self._hist = OptimizerV2.add_weight(self,
@@ -234,7 +240,8 @@ class ALSOptimizer(_OptimizerV2Wrapper):
                     'max_loss_scaling_factor', 'ratio_threshold',
                     'initial_loss_scale_factor',
                     'accumulate_statistics_over_update_period',
-                    'captured_grads_only', 'lpf_alpha', 'histogram_bin_edge')
+                    'captured_grads_only', 'lpf_alpha', 'histogram_bin_edge',
+                    'replication_factor')
 
   def __setattr__(self, name, value):
     if ALSOptimizer._is_als_hyper(name):
@@ -376,6 +383,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     Returns:
       The unscaled gradients.
     """
+    skip_lsf_rescale = False
     if isinstance(self._opt, puo._ParameterUnscalingOptimizer):  # pylint: disable=protected-access
       # Do a sanity check; we should only have one of these optimizer types
       # if this ALSOptimizer is a _ParameterUnscalingALSOptimizer.
@@ -385,12 +393,18 @@ class ALSOptimizer(_OptimizerV2Wrapper):
             "_ParameterUnscalingOptimizer, but is not itself an instance "
             "of _ParameterUnscalingALSOptimizer.")
 
-      return grads
+      skip_lsf_rescale = True
 
     grads_rescaled = []
 
     def do_rescale(g, rescaled):
-      rescaled.append(g / math_ops.cast(self.loss_scaling_factor, g.dtype))
+      rf = self._get_hyper('replication_factor')
+      g_rescaled = g / math_ops.cast(rf, g.dtype)
+
+      if not skip_lsf_rescale:
+        g_rescaled /= math_ops.cast(self.loss_scaling_factor, g.dtype)
+
+      rescaled.append(g_rescaled)
 
     is_list = isinstance(grads, list)
     if is_list:
@@ -774,6 +788,22 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       self._histogram_bin_edge = val
       self._set_hyper('histogram_bin_edge', self._histogram_bin_edge)
 
+  @property
+  def replication_factor(self):
+    return self._replication_factor
+
+  @replication_factor.setter
+  def replication_factor(self, val):
+    if not hasattr(self, '_replication_factor'):
+      self._replication_factor = val
+      self._set_hyper('replication_factor', self._replication_factor)
+      return
+
+    if val != self.replication_factor:
+      self.reset()
+      self._replication_factor = val
+      self._set_hyper('replication_factor', self._replication_factor)
+
 
 class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
   def __init__(self,
@@ -890,6 +920,10 @@ class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
   @property
   def histogram_bin_edge(self):
     return self.als_optimizer.histogram_bin_edge
+
+  @property
+  def replication_factor(self):
+    return self.als_optimizer.replication_factor
 
   @classmethod
   def from_config(cls, config, custom_objects=None):  # pylint: disable=missing-type-doc,missing-return-type-doc
