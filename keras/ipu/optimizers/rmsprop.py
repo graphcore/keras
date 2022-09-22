@@ -144,6 +144,7 @@ class ALSOptimizerRMSProp(puo._ParameterUnscalingALSOptimizer):  # pylint: disab
       ratio_threshold=ALSDefaults.ratio_threshold,
       captured_grads_only=ALSDefaults.captured_grads_only,
       lpf_alpha=ALSDefaults.lpf_alpha,
+      histogram_bin_edge=ALSDefaults.histogram_bin_edge,
       name="ALSOptimizerRMSProp"):
     opt = _ParameterUnscalingRMSProp(
         learning_rate=learning_rate,
@@ -163,6 +164,7 @@ class ALSOptimizerRMSProp(puo._ParameterUnscalingALSOptimizer):  # pylint: disab
                      ratio_threshold=ratio_threshold,
                      captured_grads_only=captured_grads_only,
                      lpf_alpha=lpf_alpha,
+                     histogram_bin_edge=histogram_bin_edge,
                      name=name)
 
   def get_config(self):

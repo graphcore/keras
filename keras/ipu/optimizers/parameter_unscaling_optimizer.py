@@ -60,6 +60,7 @@ class _ParameterUnscalingALSOptimizer(ALSOptimizer):
       ratio_threshold=ALSDefaults.ratio_threshold,
       captured_grads_only=ALSDefaults.captured_grads_only,
       lpf_alpha=ALSDefaults.lpf_alpha,
+      histogram_bin_edge=ALSDefaults.histogram_bin_edge,
       name="_ParameterUnscalingALSOptimizer"):
     if not isinstance(opt, _ParameterUnscalingOptimizer):
       raise ValueError(
@@ -76,4 +77,5 @@ class _ParameterUnscalingALSOptimizer(ALSOptimizer):
                      ratio_threshold=ratio_threshold,
                      captured_grads_only=captured_grads_only,
                      lpf_alpha=lpf_alpha,
+                     histogram_bin_edge=histogram_bin_edge,
                      name=name)

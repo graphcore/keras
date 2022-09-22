@@ -66,22 +66,28 @@ def generate_test_cases(no_ga=False):
       'optimizer_kwargs': {},
   }]
 
+  BIN_EDGE = float(np.finfo(np.float16).max - 2 * np.finfo(np.float16).eps)
+
   ALS_OPTIMIZER_KWARG_CASES = [{
       'initial_loss_scaling_factor': 8,
       'update_frequency': 2,
       'increase_factor': 2,
+      'histogram_bin_edge': BIN_EDGE
   }, {
       'initial_loss_scaling_factor': 16,
       'update_frequency': 2,
-      'increase_factor': 4
+      'increase_factor': 4,
+      'histogram_bin_edge': BIN_EDGE
   }, {
       'initial_loss_scaling_factor': 32,
       'update_frequency': 2,
-      'increase_factor': 8
+      'increase_factor': 8,
+      'histogram_bin_edge': BIN_EDGE
   }, {
       'initial_loss_scaling_factor': 32,
       'update_frequency': 2,
-      'increase_factor': 16
+      'increase_factor': 16,
+      'histogram_bin_edge': BIN_EDGE
   }]
 
   WRAPPER_CASES = [(None, 'no_wrapper'),

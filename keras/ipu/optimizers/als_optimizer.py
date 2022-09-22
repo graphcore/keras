@@ -37,7 +37,6 @@ puo = lazy_loader.LazyLoader(
     "keras.ipu.optimizers.parameter_unscaling_optimizer")
 
 import keras
-from keras import backend as K
 from keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from keras.ipu.optimizers.optimizer_v2_wrapper import _OptimizerV2Wrapper
 from keras.ipu.optimizers.gradient_accumulation_optimizer import GradientAccumulationOptimizer
@@ -57,6 +56,7 @@ class ALSDefaults:
   ratio_threshold = 10e-6
   captured_grads_only = False
   lpf_alpha = 0.0
+  histogram_bin_edge = 2**13
 
 
 class ALSOptimizer(_OptimizerV2Wrapper):
@@ -140,6 +140,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       ratio_threshold=ALSDefaults.ratio_threshold,
       captured_grads_only=ALSDefaults.captured_grads_only,
       lpf_alpha=ALSDefaults.lpf_alpha,
+      histogram_bin_edge=ALSDefaults.histogram_bin_edge,
       name="ALSOptimizer"):
     """Construct a new automatic loss scaling optimizer.
 
@@ -179,6 +180,9 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         `h(t) = alpha * h(t-1) + (1.0 - alpha) * h'(t)`, where h'(t) is the
         updated distribution at time `t`.
         Default is 0.0.
+      histogram_bin_edge: The magnitude at which gradients are considered
+        to have overflowed.
+        Defaults to 2^13.
       name: Optional name prefix for the operation created when applying
         gradients.
         Defaults to "ALSOptimizer".
@@ -194,6 +198,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       accumulate_statistics_over_update_period
     self.captured_grads_only = captured_grads_only
     self.lpf_alpha = lpf_alpha
+    self.histogram_bin_edge = histogram_bin_edge
 
     # Start with no collected stats.
     self._hist = OptimizerV2.add_weight(self,
@@ -229,7 +234,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
                     'max_loss_scaling_factor', 'ratio_threshold',
                     'initial_loss_scale_factor',
                     'accumulate_statistics_over_update_period',
-                    'captured_grads_only', 'lpf_alpha')
+                    'captured_grads_only', 'lpf_alpha', 'histogram_bin_edge')
 
   def __setattr__(self, name, value):
     if ALSOptimizer._is_als_hyper(name):
@@ -321,13 +326,11 @@ class ALSOptimizer(_OptimizerV2Wrapper):
     # We have two histogram bins, each corresponding to a numerical state;
     # ok and overflow. As such, the binning of gradients is based
     # on the numerical extrema of the float16 representable range.
-    clip_levels = constant_op.constant([dtypes.float16.max - 2 * K.epsilon()],
-                                       dtype=dtypes.float32)
+    edge = math_ops.cast(self._get_hyper('histogram_bin_edge'), dtypes.float32)
 
     g32 = array_ops.reshape(math_ops.cast(g, dtypes.float32), [-1])
     return statistics_ops.histogram_update(h,
-                                           g32,
-                                           clip_levels,
+                                           g32, [edge],
                                            absolute_of_input=True)
 
   def _add_grads(self, grads):
@@ -546,7 +549,8 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         'accumulate_statistics_over_update_period':
         self.accumulate_statistics_over_update_period,
         'ratio_threshold': self.ratio_threshold,
-        'captured_grads_only': self.captured_grads_only
+        'captured_grads_only': self.captured_grads_only,
+        'histogram_bin_edge': self.histogram_bin_edge
     })
     return config
 
@@ -754,6 +758,22 @@ class ALSOptimizer(_OptimizerV2Wrapper):
       self._lpf_alpha = val
       self._set_hyper('lpf_alpha', self._lpf_alpha)
 
+  @property
+  def histogram_bin_edge(self):
+    return self._histogram_bin_edge
+
+  @histogram_bin_edge.setter
+  def histogram_bin_edge(self, val):
+    if not hasattr(self, '_histogram_bin_edge'):
+      self._histogram_bin_edge = val
+      self._set_hyper('histogram_bin_edge', self._histogram_bin_edge)
+      return
+
+    if val != self.histogram_bin_edge:
+      self.reset()
+      self._histogram_bin_edge = val
+      self._set_hyper('histogram_bin_edge', self._histogram_bin_edge)
+
 
 class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
   def __init__(self,
@@ -866,6 +886,10 @@ class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
   @property
   def lpf_alpha(self):
     return self.als_optimizer.lpf_alpha
+
+  @property
+  def histogram_bin_edge(self):
+    return self.als_optimizer.histogram_bin_edge
 
   @classmethod
   def from_config(cls, config, custom_objects=None):  # pylint: disable=missing-type-doc,missing-return-type-doc
