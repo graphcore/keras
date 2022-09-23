@@ -87,11 +87,24 @@ See the respective API documentation for more details.
 
 .. note::
 
-  When using data-parallelism, the ``steps_per_execution`` value the model was
-  compiled with must be an integer multiple of
-  ``gradient_accumulation_steps_per_replica``. Data parallelism is discussed in
-  :numref:`automatic-data-parallelism`.
+  A step commonly refers to the forward and backward passes, followed by a
+  weight update. On the IPU, when gradient accumulation is used, a step refers
+  to the forward and backward passes on a micro batch, but not including the
+  corresponding weight update (the weight update is only performed every
+  ``gradient_accumulation_steps_per_replica`` steps). The number of weight
+  update steps per execution is given by the ``steps_per_execution`` value the
+  model was compiled with, divided by
+  ``gradient_accumulation_steps_per_replica``. An execution, which is a
+  compiled Poplar program, must have an integer number of weight update
+  steps, such that all the accumulated gradients are applied.
+  Therefore, ``steps_per_execution`` must be an integer multiple of
+  ``gradient_accumulation_steps_per_replica``.
 
+.. note::
+  The steps per epoch value (``steps_per_epoch``) applies per replica.
+  ``steps_per_epoch`` needs to be set when using a dataset of
+  infinite cardinality. An epoch consists of one or more executions. Therefore, if set,
+  ``steps_per_epoch`` must be an integer multiple of ``steps_per_execution``.
 
 .. note::
 

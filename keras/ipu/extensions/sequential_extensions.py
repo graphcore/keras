@@ -208,9 +208,8 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
       gradient_accumulation_steps_per_replica: An integer which indicates the
         number of steps the gradients will be accumulated for in each replica.
         The `steps_per_execution` value used when compiling the model must be
-        divisible by the `gradient_accumulation_steps_per_replica` multiplied
-        by the number of replicas. This value is saved/loaded when the model
-        is saved/loaded.
+        divisible by `gradient_accumulation_steps_per_replica`. This value is
+        saved/loaded when the model is saved/loaded.
       reduction_method: Reduction method to use when accumulating gradients.
         During the iterations in each optimizer step, the computed gradients
         can either be directly summed up or scaled such that we compute a mean
@@ -280,9 +279,8 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
       gradient_accumulation_steps_per_replica: An integer which indicates the
         number of steps the gradients will be accumulated for in each replica.
         The `steps_per_execution` value used when compiling the model must be
-        divisible by the `gradient_accumulation_steps_per_replica` multiplied
-        by the number of replicas. This value is saved/loaded when the model
-        is saved/loaded.
+        divisible by `gradient_accumulation_steps_per_replica`. This value is
+        saved/loaded when the model is saved/loaded.
       device_mapping: If provided, a list of length equal to the number of
         pipeline stages assigned in this model. An element at index `i` in the
         list represents which IPU the `i`'th pipeline stage should reside on.
