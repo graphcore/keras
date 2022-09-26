@@ -112,7 +112,6 @@ class ALSOptimizerAdam(puo._ParameterUnscalingALSOptimizer):  # pylint: disable=
       captured_grads_only=ALSDefaults.captured_grads_only,
       lpf_alpha=ALSDefaults.lpf_alpha,
       histogram_bin_edge=ALSDefaults.histogram_bin_edge,
-      replication_factor=ALSDefaults.replication_factor,
       name="ALSOptimizerAdam"):
     opt = _ParameterUnscalingAdam(
         learning_rate=learning_rate,
@@ -132,7 +131,6 @@ class ALSOptimizerAdam(puo._ParameterUnscalingALSOptimizer):  # pylint: disable=
                      captured_grads_only=captured_grads_only,
                      lpf_alpha=lpf_alpha,
                      histogram_bin_edge=histogram_bin_edge,
-                     replication_factor=replication_factor,
                      name=name)
 
   def get_config(self):
