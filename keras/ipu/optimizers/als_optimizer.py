@@ -776,6 +776,12 @@ class ALSOptimizer(_OptimizerV2Wrapper):
 
 
 class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
+  """An optimizer that provides Gradient Accumulation functionality to
+  `keras.ipu.optimizers.ALSOptimizer` and its derivatives
+  (`keras.ipu.optimizers.adam.ALSOptimizerAdam`,
+   `keras.ipu.optimizers.rmsprop.ALSOptimizerRMSProp` and
+   `keras.ipu.optimizers.gradient_descent.ALSOptimizerSGD`)
+  """
   def __init__(self,
                als_optimizer,
                num_mini_batches,
@@ -784,6 +790,57 @@ class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
                dtype=None,
                reduction_method=ga.GradientAccumulationReductionMethod.SUM,
                name="ALSGradientAccumulationOptimizer"):
+    """
+    Construct a GradientAccumulationOptimizer. Note this doesn't divide
+    by the number of mini-batches.
+
+    Args:
+      opt: An existing `ALSOptimizer` instance to encapsulate.
+      num_mini_batches: The number of mini-batches the gradients
+                        will be accumulated for.
+      offload_weight_update_variables: When enabled, any `tf.Variable` which is
+        only used by the weight update of the pipeline (for example the
+        accumulator variable when using the `tf.MomentumOptimizer`), will be
+        stored in the remote memory. During the weight update this variable will
+        be streamed onto the device and then streamed back to the remote memory
+        after it has been updated. Requires the machine to be configured with
+        support for `Poplar remote buffers`. Offloading variables into remote
+        memory can reduce maximum memory liveness, but can also increase the
+        computation time of the weight update.
+        When set to `None` the variables will be placed in either in-processor
+        or remote memory automatically based on the current best placement
+        strategy.
+      replicated_optimizer_state_sharding: If True, any `tf.Variable` which is
+        offloaded (for example the accumulator variable when using the
+        `tf.MomentumOptimizer`), will be partitioned across the replicas.
+        This can exploit the additional bandwidth of the IPU-Links to improve
+        overall throughput, however it might increase the code size and hence
+        the model might need adjusting (for example the PopLibs option
+        `availableMemoryProportion` might need to be changed).
+      dtype: The data type used for the gradient accumulation buffer.
+        One of:
+          - `None`: Use an accumulator of the same type as the variable type.
+          - A `DType`: Use this type for all the accumulators.
+          - A callable that takes the variable and returns a `DType`: Allows
+            specifying the accumulator type on a per-variable basis.
+
+        The gradients passed to `Optimizer.apply_gradients` will have the dtype
+        requested here. If that dtype is different from the variable dtype
+        a cast is needed at some point to make them compatible. If you want
+        to cast the gradients immediately, you can wrap your optimizer in the
+        `MapGradientOptimizer` with a `tf.cast`.
+      reduction_method: Reduction method to use when accumulating gradients.
+        During the iterations in each optimizer step, the computed gradients
+        can either be directly summed up or scaled such that we compute a mean
+        of all gradients for each variable. Computing a mean avoids potential
+        issues with overflow during accumulation especially when using
+        float16, but gives smaller gradients and might require adjusting
+        the learning-rate accordingly.
+        Defaults to `GradientAccumulationReductionMethod.SUM`
+        (see :class:`~tensorflow.python.ipu.optimizers.GradientAccumulationReductionMethod`)  # pylint: disable=line-too-long
+      name: Optional name prefix for the operations created when applying
+        gradients. Defaults to "ALSGradientAccumulationOptimizer".
+    """
     if not isinstance(als_optimizer, ALSOptimizer):
       raise ValueError(
           "ALSGradientAccumulationOptimizer can only be used with instances "

@@ -88,7 +88,8 @@ class _ParameterUnscalingSGD(
 
 
 class ALSOptimizerSGD(puo._ParameterUnscalingALSOptimizer):  # pylint: disable=protected-access
-  """An SGD optimizer that performs ALS.
+  """An SGD optimizer that performs Automatic Loss Scaling,
+  specifically handling moment updates.
   """
   def __init__(
       self,
@@ -105,6 +106,58 @@ class ALSOptimizerSGD(puo._ParameterUnscalingALSOptimizer):  # pylint: disable=p
       lpf_alpha=ALSDefaults.lpf_alpha,
       histogram_bin_edge=ALSDefaults.histogram_bin_edge,
       name="ALSOptimizerSGD"):
+    """Construct a new automatic loss scaling SGD optimizer.
+
+    Args:
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
+        that takes no arguments and returns the actual value to use. The
+        learning rate.
+        Defaults to 0.01.
+      momentum: float hyperparameter >= 0 that accelerates gradient descent
+        in the relevant direction and dampens oscillations.
+        Defaults to 0, i.e., vanilla gradient descent.
+      initial_loss_scaling_factor: The initial Loss Scaling Factor (LSF).
+        Defaults to 1.
+      update_frequency: The number of steps that should be taken before
+        updating the LSF.
+        Defaults to 8.
+      increase_factor: The factor to scale the LSF by when increasing the LSF.
+        Defaults to 2.
+      max_loss_scaling_factor: The maximum value to which the LSF can increase.
+        Defaults to 32768.
+      accumulate_statistics_over_update_period: If true, statistics are
+        accumulated over each `update_frequency` period, else they are
+        collected once every `update_frequency` updates.
+      ratio_threshold: The threshold over which the ratio of overflowed
+        float16 gradients to all float16 gradients must exceed to cause a
+        reduction in LSF. Ratios not meeting this threshold will cause an
+        increase in LSF.
+        Defaults to 10e-6.
+      captured_grads_only: Whether to only use explicitly captured gradients (
+        layers wrapped with either
+        `keras.ipu.layers.capture_upstream_gradients.CaptureUpstreamGradients`
+        or
+        `keras.ipu.layers.capture_upstream_gradients.CaptureActivationGradients`
+      ).
+        Defaults to False.
+      lpf_alpha: Low Pass Filtering (exponential type) coefficient, used for
+        the collected gradient distributions when updating statistics. Setting
+        this value to 1.0 will result in no statistical update of the
+        ALSOptimizer state. Setting this value to 0.0 will result in no
+        retention of the previous ALSOptimizer statistical state following an
+        update period. Setting a lower value between these extrema should
+        present a "smoother" LSF update pattern over time, such that
+        `h(t) = alpha * h(t-1) + (1.0 - alpha) * h'(t)`, where h'(t) is the
+        updated distribution at time `t`.
+        Default is 0.0.
+      histogram_bin_edge: The magnitude at which gradients are considered
+        to have overflowed.
+        Defaults to 2^13.
+      name: Optional name prefix for the operation created when applying
+        gradients.
+        Defaults to "ALSOptimizerSGD".
+    """
     opt = _ParameterUnscalingSGD(
         learning_rate=learning_rate,
         momentum=momentum,
