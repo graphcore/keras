@@ -1,4 +1,5 @@
-# Simple training example using ALS.
+# Simple training example using ALS and gradient accumulation
+# without keras.Model.
 
 import numpy as np
 
