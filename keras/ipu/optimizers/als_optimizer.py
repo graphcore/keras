@@ -866,6 +866,29 @@ class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
       captured_grads=None,
       name=None,
       experimental_aggregate_gradients=True):
+    """Accumulate and apply gradients to variables and
+    update the loss scale factor.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs as returned by
+        compute_gradients().
+      global_step: Optional Variable to increment by one after the
+        variables have been updated.
+      captured_grads: A dictionary of captured gradients to be used for
+        statistics collection when updating the ALS Loss Scale Factor.
+      name: Optional name for the returned operation.  Default to the
+        name passed to the Optimizer constructor.
+      experimental_aggregate_gradients: Whether to sum gradients from different
+        replicas in the presense of `tf.distribute.Strategy`. If False, it's
+        user responsibility to aggregate the gradients. Default to True.
+
+    Returns:
+      An `Operation` that applies the gradients. If `global_step` was not None,
+      that operation also increments `global_step`.
+
+    Raises:
+      ValueError: If the grads_and_vars is malformed.
+    """
     # Add the scaled grads to the histogram and get the unscaled grads for
     # the update.
     grads_and_vars_rescaled = []
