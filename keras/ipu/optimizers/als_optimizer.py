@@ -81,6 +81,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
   Example using Keras Functional API:
 
   .. code-block:: python
+
     strategy = IPUStrategy()
     with strategy.scope():
       opt = SGD(0.01)
@@ -105,6 +106,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
   Example using `tf.function`:
 
   .. code-block:: python
+
     strategy = IPUStrategy()
       opt = SGD(0.01)
       opt_wrapper = ALSOptimizer(
