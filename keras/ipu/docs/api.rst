@@ -6,7 +6,6 @@ For details on the standard Keras API, refer to the `Keras documentation <https:
 .. automodule:: keras.ipu
   :members: PipelineStage, FunctionalLayerPipelineStageAssignment, SequentialLayerPipelineStageAssignment, ModelLayerPipelineStageAssignment
   :imported-members: PipelineStage, FunctionalLayerPipelineStageAssignment, FunctionalLayerPipelineStageAssignment, SequentialLayerPipelineStageAssignment, ModelLayerPipelineStageAssignment
-  :exclude-members: GradientAccumulationOptimizer, ALSOptimizer, ALSGradientAccumulationOptimizer, ALSOptimizerAdam, ALSOptimizerRMSProp, ALSOptimizerSGD
 
 .. automodule:: keras.ipu.extensions
   :members: FunctionalExtension, SequentialExtension, ModelExtension

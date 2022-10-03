@@ -24,8 +24,6 @@ from keras.ipu.extensions.functional_extensions import PipelineStage
 from keras.ipu.extensions.functional_extensions import FunctionalLayerPipelineStageAssignment
 from keras.ipu.extensions.sequential_extensions import SequentialLayerPipelineStageAssignment
 from keras.ipu.extensions.model_extensions import ModelLayerPipelineStageAssignment
-from keras.ipu.optimizers.als_optimizer import ALSOptimizer
-from keras.ipu.optimizers.als_optimizer import ALSGradientAccumulationOptimizer
 # pylint: enable=unused-import
 
 __ipu__built__ = '1'
