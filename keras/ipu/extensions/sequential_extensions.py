@@ -174,6 +174,7 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
       self,
       gradient_accumulation_steps_per_replica=None,
       gradient_accumulation_reduction_method='sum',
+      use_v2_gradient_accumulation_optimizer=False,
       **gradient_accumulation_optimizer_kwargs):
     # pylint:disable=line-too-long
     """Sets the gradient accumulation options for non-pipelined models which are
@@ -219,6 +220,12 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
         the learning-rate accordingly.
         Defaults to `GradientAccumulationReductionMethod.SUM`
         (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationReductionMethod`).
+      use_v2_gradient_accumulation_optimizer: When enabled, the `OptimizerV2`
+        based IPU Keras `GradientAccumulationOptimizer`
+        (see :class:`~keras.ipu.optimizers.gradient_accumulation_optimizer.GradientAccumulationOptimizer`)
+        is used in place of the default IPU TensorFlow `GradientAccumulationOptimizerV2`
+        (see :class:`~tensorflow.python.ipu.gradient_accumulation.GradientAccumulationOptimizerV2`).
+        Default is False.
       gradient_accumulation_optimizer_kwargs: All remaining keyword arguments
         are forwarded to
         :class:`~tensorflow.python.ipu.optimizers.GradientAccumulationOptimizerV2`.
@@ -232,6 +239,7 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     self._set_gradient_accumulation_options_impl(
         gradient_accumulation_steps_per_replica,
         gradient_accumulation_reduction_method,
+        use_v2_gradient_accumulation_optimizer,
         gradient_accumulation_optimizer_kwargs)
 
   def set_pipelining_options(self,

@@ -51,6 +51,7 @@ from keras.ipu.extensions import polling_thread
 from keras.ipu.extensions import extensions_util
 from keras.ipu.extensions import data_feed_manager
 from keras.ipu.optimizers import als_optimizer as als
+from keras.ipu.optimizers import gradient_accumulation_optimizer as gao_v2
 from keras.engine import base_layer_utils
 from keras.engine import base_layer
 from keras.engine import input_spec
@@ -209,6 +210,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     self._gradient_accumulation_optimizer_kwargs = dict()
     self._gradient_accumulation_reduction_method = \
       ga.GradientAccumulationReductionMethod.SUM
+    self._use_v2_gradient_accumulation_optimizer = False
 
     # Asynchronous callbacks.
     self._asynchronous_callbacks = False
@@ -580,14 +582,28 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
       optimizer = _KerasOptimizerWrapper(self, optimizer)
     else:
-      optimizer = _KerasOptimizerWrapper(self, self.optimizer)
+      if not self._use_v2_gradient_accumulation_optimizer:
+        optimizer = _KerasOptimizerWrapper(self, self.optimizer)
 
-      optimizer = \
-        gradient_accumulation_optimizer.GradientAccumulationOptimizerV2(
-            optimizer,
+        optimizer = \
+          gradient_accumulation_optimizer.GradientAccumulationOptimizerV2(
+              optimizer,
+              gradient_accumulation_steps_per_replica,
+              reduction_method=self._gradient_accumulation_reduction_method,
+              **self._gradient_accumulation_optimizer_kwargs)
+      else:
+        if not isinstance(self.optimizer, optimizer_v2.OptimizerV2):
+          raise ValueError(
+              "use_v2_gradient_accumulation_optimizer may only be set to True "
+              "when an OptimizerV2 derived optimizer is used.")
+
+        optimizer = gao_v2.GradientAccumulationOptimizer(
+            self.optimizer,
             gradient_accumulation_steps_per_replica,
             reduction_method=self._gradient_accumulation_reduction_method,
             **self._gradient_accumulation_optimizer_kwargs)
+
+        optimizer = _KerasOptimizerWrapper(self, optimizer)
 
     train_step = self._ipu_train_step(optimizer)
 
@@ -1021,6 +1037,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
   def _set_gradient_accumulation_options_impl(
       self, gradient_accumulation_steps_per_replica,
       gradient_accumulation_reduction_method,
+      use_v2_gradient_accumulation_optimizer,
       gradient_accumulation_optimizer_kwargs):
     # The extension might need to be reset if any of the values are set.
     reset_extension = False
@@ -1068,6 +1085,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
       self._gradient_accumulation_optimizer_kwargs = \
         gradient_accumulation_optimizer_kwargs
+
+      self._use_v2_gradient_accumulation_optimizer = \
+        use_v2_gradient_accumulation_optimizer
+
       reset_extension = True
 
     if reset_extension:

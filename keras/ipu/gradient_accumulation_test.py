@@ -97,7 +97,8 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
       reduction_method=[
           ga.GradientAccumulationReductionMethod.MEAN,
           ga.GradientAccumulationReductionMethod.RUNNING_MEAN
-      ])
+      ],
+      use_v2_gao=[False, True])
 
   MINIMIZE_TESTCASES = [{
       'testcase_name': 'mixed_precision',
@@ -109,7 +110,8 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   @testing_utils.run_v2_only
-  def testModels(self, model_fn, replication_factor, reduction_method):
+  def testModels(self, model_fn, replication_factor, reduction_method,
+                 use_v2_gao):
     tu.skip_if_not_enough_ipus(self, replication_factor)
 
     cfg = ipu.config.IPUConfig()
@@ -124,29 +126,39 @@ class KerasGradientAccumulationTest(tf.test.TestCase, parameterized.TestCase):
     steps_per_epoch = 64
     epochs = 2
 
-    optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+    def opt_fn(lr=0.1):
+      if not use_v2_gao:
+        return gradient_descent.GradientDescentOptimizer(lr)
+      return gradient_descent_v2.SGD(lr)
 
     # Run on CPU - simulate gradient accumulation by just using a bigger batch
     # size but less steps per epoch.
     m = model_fn()
+    optimizer = opt_fn()
     m.compile(optimizer, loss=keras.losses.SparseCategoricalCrossentropy())
     m.fit(get_mnist_dataset(batch_size * gradient_accumulation_steps),
           steps_per_epoch=steps_per_epoch // gradient_accumulation_steps,
           epochs=epochs)
     cpu_weights = m.weights
 
-    optimizer._learning_rate /= replication_factor
-
     strategy = ipu.ipu_strategy.IPUStrategyV1()
     with strategy.scope():
       m = model_fn()
+
+      optimizer = opt_fn()
+      if hasattr(optimizer, '_learning_rate'):  # v1
+        optimizer._learning_rate /= replication_factor
+      else:  # v2
+        optimizer.lr.assign(optimizer.lr / replication_factor)
+
       m.compile(optimizer,
                 loss=keras.losses.SparseCategoricalCrossentropy(),
                 steps_per_execution=gradient_accumulation_steps * 2)
       m.set_gradient_accumulation_options(
           gradient_accumulation_steps_per_replica=
           gradient_accumulation_steps_per_replica,
-          gradient_accumulation_reduction_method=reduction_method)
+          gradient_accumulation_reduction_method=reduction_method,
+          use_v2_gradient_accumulation_optimizer=use_v2_gao)
       m.fit(get_mnist_dataset(batch_size),
             steps_per_epoch=steps_per_epoch,
             epochs=epochs)
