@@ -19,3 +19,4 @@ Keras layer specializations for the Graphcore IPU
 
 from keras.ipu.layers.capture_upstream_gradients import CaptureUpstreamGradients
 from keras.ipu.layers.capture_upstream_gradients import CaptureActivationGradients
+from keras.ipu.layers.dense import Dense

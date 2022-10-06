@@ -33,6 +33,7 @@ py_library(
     srcs = [
         "__init__.py",
         "capture_upstream_gradients.py",
+        "dense.py",
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
@@ -40,6 +41,21 @@ py_library(
         "//:expect_numpy_installed",
         "//:expect_tensorflow_installed",
         "//keras:engine",
+    ],
+)
+
+tf_py_test(
+    name = "dense_layer_test",
+    size = "medium",
+    srcs = ["dense_layer_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras/ipu/layers",
+        "//keras/layers:core",
     ],
 )
 
