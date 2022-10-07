@@ -20,152 +20,11 @@ import copy
 
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python.util.tf_export import keras_export
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
-
 from keras.ipu.extensions import extensions_base
+from keras.ipu.extensions.pipeline_stage_assignment import FunctionalLayerPipelineStageAssignment
+from keras.ipu.extensions.pipeline_stage_assignment import FunctionalNestedModelPipelineStageAssignment
 from keras.engine import functional
-from keras.utils import generic_utils
-
-# pylint: disable=g-inconsistent-quotes
-ipu_strategy = generic_utils.LazyLoader("ipu_strategy", globals(),
-                                        "tensorflow.python.ipu.ipu_strategy")
-# pylint: enable=g-inconsistent-quotes
-
-
-@keras_export('keras.ipu.PipelineStage')
-class PipelineStage:
-  """A scope within which Keras layers and/or calls to Keras layers can be
-  assigned to pipeline stages.
-
-  Pipeline stages can be assigned to all calls of `Layer` by constructing the
-  `Layer` within a :class:`~keras.ipu.PipelineStage` scope as follows:
-
-  .. code-block:: python
-
-    strategy = ipu.ipu_strategy.IPUStrategy()
-    input_layer = Input(2)
-    with strategy.scope():
-      with PipelineStage(0):
-        x = Dense(4)(input_layer)
-
-      with PipelineStage(1):
-        x = Dense(4)(x)
-
-  Pipeline stages can also be assigned to individual `Layer` calls, as follows:
-
-  .. code-block:: python
-
-    strategy = ipu.ipu_strategy.IPUStrategy()
-    input_layer = Input(2)
-    l = Dense(4)
-    with strategy.scope():
-      with PipelineStage(0):
-        x = l(input_layer)
-
-      with PipelineStage(1):
-        x = l(x)
-
-  Pipeline stages assigned to `Layer` calls take precedence over those assigned
-  when constructing the `Layer`.
-  """
-  def __init__(self, stage):
-    """Creates a scope within which Keras layers and/or calls to Keras layers
-    are assigned to pipeline stages.
-
-    Arguments:
-      stage: The pipeline stage that any Keras layers created and/or called
-        will be assigned to within this scope.
-    """
-    self._stage = stage
-
-  def __enter__(self):
-    if self._stage < 0:
-      raise ValueError("%d is not a valid pipeline stage.")
-
-    strategy = ds_context.get_strategy()
-    if not isinstance(strategy, ipu_strategy.IPUStrategyV1):
-      raise RuntimeError("PipelineStage may only be used from "
-                         "within an IPUStrategy context.")
-
-    if hasattr(strategy, "_pipeline_stage"):
-      raise RuntimeError("Pipeline stages must not be nested.")
-
-    strategy._pipeline_stage = self._stage  # pylint: disable=protected-access
-
-    return self
-
-  def __exit__(self, _exception_type, _value, _traceback):
-    strategy = ds_context.get_strategy()
-    assert strategy and hasattr(strategy, "_pipeline_stage")
-    delattr(strategy, "_pipeline_stage")
-
-
-@keras_export('keras.ipu.FunctionalLayerPipelineStageAssignment')
-class FunctionalLayerPipelineStageAssignment:
-  """A class to indicate at which pipeline stage a layer in a `Functional`
-  model should be executed.
-
-  Keras layers can be called multiple times in order to share weights between
-  layers. Each of these calls produces a tensor output which can be executed
-  in different pipeline stages (as long as these stages are mapped to the
-  same device).
-  """
-  def __init__(self, layer, node_index, pipeline_stage=None):
-    """Create a new
-    :class:`~keras.ipu.FunctionalLayerPipelineStageAssignment`.
-
-    Args:
-      layer (keras.layers.Layer): The Keras layer to which this assignment
-        applies.
-      node_index (int): The specific call to the `layer` that produced a tensor.
-        Layers can be called multiple times in order to share weights. A new
-        :class:`~keras.ipu.FunctionalLayerPipelineStageAssignment` is required
-        for every `Layer` call. For example, `node_index=0` will correspond to
-        the first time the `layer` was called.
-      pipeline_stage (int): If provided, indicates which pipeline stage this
-        layer should be assigned to. If not provided this layer will be
-        unassigned.
-    """
-    self._layer = layer
-    self._node_index = node_index
-    self.pipeline_stage = pipeline_stage
-
-  @property
-  def layer(self):
-    """Returns the Keras layer associated with this assignment."""
-    return self._layer
-
-  @property
-  def node_index(self):
-    """Returns the specific call to the layer that produced a tensor."""
-    return self._node_index
-
-  @property
-  def inbound_layers(self):
-    """Returns the input layers for the layer in this assignment. This can be
-    useful for identifying which specific `node_index` this is."""
-    node = self._layer._inbound_nodes[self.node_index]  # pylint: disable=protected-access
-    return [n.layer for n in node.parent_nodes]
-
-  @property
-  def pipeline_stage(self):
-    """Returns the pipeline stage this layer has been assigned to. If `None`,
-    then this layer has not been assigned to a pipeline stage."""
-    return self._pipeline_stage
-
-  @pipeline_stage.setter
-  def pipeline_stage(self, value):
-    """Setter of `pipeline_stage` property.
-
-    Args:
-      value (int): The pipeline stage to assign this layer to."""
-    self._pipeline_stage = value
-
-  def __str__(self):
-    return ("Layer: {} (node index {}) is assigned to pipeline "
-            "stage: {}".format(self.layer.name, self.node_index,
-                               self.pipeline_stage))
+from keras.engine import node as node_module
 
 
 class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abstract-method
@@ -173,9 +32,6 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
   def __init__(self, *args, **kwargs):  # pylint: disable=unused-argument
     extensions_base.KerasExtensionBase.__init__(self)
     self._pipeline_stage_assignment = []
-
-    # Runtime values
-    self._pipeline_maximum_stage = None
 
   def _is_pipelined(self):
     return bool(self._pipeline_stage_assignment)
@@ -431,76 +287,150 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     self._set_outfeed_queue_options_impl(**kwargs)
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
-  def _get_pipelined_post_order(self, pipeline_stage_assignment):
-    # Create a lookup map for nodes.
-    node_to_stage = {}
-    found_stages = set()
-    for assignment in pipeline_stage_assignment:
-      pipeline_stage = assignment.pipeline_stage
-      layer = assignment.layer
-      if assignment.pipeline_stage is None:
-        raise ValueError(
-            "Layer {} with node index {} has not been assigned a pipeline "
-            "stage.".format(assignment.layer.name, assignment.node_index))
-      node = layer._inbound_nodes[assignment.node_index]  # pylint: disable=protected-access
-      if str(id(node)) in node_to_stage:
-        raise ValueError(
-            "Duplicate assignment for layer {} with node index {}. Each layer "
-            "invocation can only be assigned to a single pipeline stage.".
-            format(assignment.layer.name, assignment.node_index))
-
-      node_to_stage[str(id(node))] = pipeline_stage
-      found_stages.add(pipeline_stage)
-
-    assert len(node_to_stage) == (len(self._network_nodes) - len(self.inputs))
-
-    found_stages = sorted(list(found_stages))
-    num_stages = found_stages[-1] + 1
-    if found_stages != list(range(num_stages)):
-      missing_stages = set(range(num_stages)) - set(found_stages)
-      raise ValueError(
-          "Pipeline stages in the graph need to be strictly increasing, "
-          "found pipeline stages %s, however the following pipeline stages "
-          "are missing %s." % (", ".join(str(v)
-                                         for v in found_stages), ", ".join(
-                                             str(v) for v in missing_stages)))
-
+  def _get_pipelined_post_order(self, pipeline_stage_assignment, inputs=None):
     # Create a post order per pipeline stage as post order does not take
     # pipeline stages into account, for example multiple pipeline stages might
-    # have output layers. Try and reorder the the nodes to preserve post order
+    # have output layers. Try reordering the nodes to preserve post order
     # and to make sure pipeline stages can still be executed in order.
+    # `inputs` can be specified to create a post order starting with the given
+    # inputs. Otherwise, the inputs specified during tracing are used.
+
     post_order_per_stage = {}
     post_order = self._create_post_order()
-    num_inputs = len(self.inputs)
 
-    for idx, node in enumerate(post_order):
-      if idx < num_inputs:
-        layer = node._keras_history.layer  # pylint: disable=protected-access
+    if not isinstance(pipeline_stage_assignment, list):
+      raise ValueError("`pipeline_stage_assignment` needs to be a list.")
+
+    if len(pipeline_stage_assignment) != len(post_order):
+      raise ValueError(
+          f"The length of the provided `pipeline_stage_assignment` "
+          f"({len(pipeline_stage_assignment)}) does not match the number of "
+          f"layers in the graph ({len(post_order)}). "
+          f"Each layer needs to be assigned a pipeline stage "
+          f"(excluding input layers).")
+
+    tensor_dict = {}
+
+    def visited(tensors, new_tensors=None):
+      tensors = tf.nest.flatten(tensors)
+      ids = [str(id(t)) for t in tensors]
+      if new_tensors is not None:
+        tensors = tf.nest.flatten(new_tensors)
+
+      for t_id, tensor in zip(ids, tensors):
+        tensor_dict[t_id] = [tensor] * self._tensor_usage_count[t_id]
+
+    visited(self.inputs, inputs)
+
+    if inputs is None:
+      # Assign inputs to stage 0. If using explicit inputs, skip this as the
+      # inputs come from outside this model.
+      for tensor in self.inputs:
+        layer = tensor._keras_history.layer  # pylint: disable=protected-access
         assert len(layer.inbound_nodes) == 1
         post_order_per_stage.setdefault(0, []).append(layer.inbound_nodes[0])
-      else:
-        pipeline_stage = node_to_stage[str(id(node))]
-        post_order_per_stage.setdefault(pipeline_stage, []).append(node)
 
-    new_post_order_node_execution = []
+    stages = set()
+    for assignment, node in zip(pipeline_stage_assignment, post_order):
+      if isinstance(node.layer, extensions_base.KerasExtensionBase):
+        # If node is a nested model, calculate its post-order-per-stage and
+        # append it to the post-order-per-stage we are building for this model.
+
+        if not isinstance(assignment,
+                          FunctionalNestedModelPipelineStageAssignment):
+          raise ValueError(
+              f"The pipeline stage assignment for nested model "
+              f"{node.layer.name} in {self.name} must be an instance of "
+              f"`FunctionalNestedModelPipelineStageAssignment`. Instead the "
+              f"assignment was of type {type(assignment).__name__}.")
+
+        # Check that the assignment is for this node.
+        if id(assignment.nested_model) != id(node.layer):
+          raise ValueError(
+              f"The order of `pipeline_stage_assignment` does not match the "
+              f"post-order generated from the graph ({assignment.layer.name} "
+              f"!= {node.layer.name}).")
+
+        # Get a post order for the nested model using the tensors from this
+        # post order as inputs.
+        new_args, _ = node.map_arguments(tensor_dict)
+
+        nested_post_order_per_stage, output_tensors = (
+            node.layer._get_pipelined_post_order(  # pylint: disable=protected-access
+                assignment.pipeline_stage_assignments,
+                inputs=new_args))
+
+        # Map the outputs of the nested model node to the output tensors from
+        # its post order.
+        visited(node.outputs, output_tensors)
+
+        # Update the current post order with nodes from the nested model.
+        stages.update(nested_post_order_per_stage)
+        for stage, nested_post_order in nested_post_order_per_stage.items():
+          for nested_node in nested_post_order:
+            post_order_per_stage.setdefault(stage, []).append(nested_node)
+
+        continue
+
+      if not isinstance(assignment, FunctionalLayerPipelineStageAssignment):
+        raise ValueError(
+            f"The pipeline stage assignment for layer {node.layer.name} in "
+            f"{self.name} must be an instance of "
+            f"`FunctionalLayerPipelineStageAssignment`. Instead the assignment "
+            f"was of type {type(assignment).__name__}.")
+
+      # Check that the assignment is for this node.
+      if id(assignment.layer) != id(node.layer):
+        raise ValueError(
+            f"The order of `pipeline_stage_assignment` does not match the "
+            f"post-order generated from the graph ({assignment.layer.name} "
+            f"!= {node.layer.name}).")
+
+      if assignment.pipeline_stage is None:
+        raise ValueError(
+            f"Layer {assignment.layer.name} with node_index "
+            f"{assignment.node_index} has not been assigned a pipeline stage "
+            f"in `pipeline_stage_assignment`.")
+
+      # Create a new node using the tensors from the current post order as
+      # inputs (the current order tracks tensors through nested models).
+      new_args, new_kwargs = node.map_arguments(tensor_dict)
+      new_outputs = node.layer(*new_args, **new_kwargs)
+      visited(node.outputs, new_outputs)
+      new_node = node_module.Node(node.layer, new_args, new_kwargs,
+                                  new_outputs)
+
+      # Add node to the post order for its pipeline stage.
+      post_order_per_stage.setdefault(assignment.pipeline_stage,
+                                      []).append(new_node)
+      stages.add(assignment.pipeline_stage)
+
     computed_set = set()
+
+    if inputs is not None:
+      # If using explicit inputs, mark them as already computed.
+      computed_set.update(str(id(x)) for x in inputs)
+
     # New post order executes all the layers within a pipeline stage and it
     # makes sure that all the layer inputs have already executed.
-    for stage_id in range(num_stages):
-      for node in post_order_per_stage[stage_id]:
+    for stage_id in range(max(stages) + 1):
+      for node in post_order_per_stage.get(stage_id, []):
         all_inputs_executed = all(x in computed_set
                                   for x in node.flat_input_ids)
         if not all_inputs_executed:
           raise ValueError(
-              "Layer %s in pipeline stage %d has a dependency from a pipeline "
-              "stage which has not yet executed. Layers can only use outputs "
-              "from current or previous pipeline stages." %
-              (node.outbound_layer.name, stage_id))
-        new_post_order_node_execution.append(node)
+              f"Layer {node.outbound_layer.name} in pipeline stage {stage_id} "
+              f"has a dependency from a pipeline stage which has not yet "
+              f"been executed. Layers can only use outputs from current or "
+              f"previous pipeline stages.")
+
         # Update computed_set.
         computed_set.update(node.flat_output_ids)
 
-    return post_order_per_stage, new_post_order_node_execution
+    output_tensors = [
+        tensor_dict[str(id(x))].pop() for x in tf.nest.flatten(self.outputs)
+    ]
+    return post_order_per_stage, output_tensors
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _build_with_dtypes(self, input_shape, input_dtype):
@@ -510,41 +440,37 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     if not self.built:
       self.build(input_shape)
 
-  def _get_pipeline_post_order(self):
-    post_order_per_stage, _ = self._get_pipelined_post_order(
-        self._pipeline_stage_assignment)
-    return post_order_per_stage
-
   def get_pipeline_stage_assignment(self):
-    # pylint:disable=line-too-long
-    """Returns the pipeline stage assignment of all the layers in the model.
+    """Returns the pipeline stage assignment of the layers in the model.
 
-    If
-    :meth:`~keras.ipu.FunctionalExtension.set_pipeline_stage_assignment`
+    If :meth:`~keras.ipu.FunctionalExtension.set_pipeline_stage_assignment()`
     has been called before, then it returns a copy of the current assignment,
     otherwise returns a list of
-    :class:`~keras.ipu.FunctionalLayerPipelineStageAssignment` for each invocation of each
-    layer in the model (excluding input layers) in post order (which means that
-    layers are returned in the order they are executed).
-    """
-    # pylint:enable=line-too-long
+    :class:`~keras.ipu.FunctionalLayerPipelineStageAssignment` and
+    :class:`~keras.ipu.FunctionalNestedModelPipelineStageAssignment` for each
+    layer invocation (excluding input layers) and nested model in the model. The
+    list is in post order (execution order)."""
     if self._pipeline_stage_assignment:
       return copy.copy(self._pipeline_stage_assignment)
 
     post_order = self._create_post_order()
 
     output = []
-    # Input tensors don't get a pipeline stage so skip them.
-    for node in post_order[len(self.inputs):]:
+    for node in post_order:
       layer = node.layer
       node_index = layer._inbound_nodes.index(node)  # pylint: disable=protected-access
-      output.append(FunctionalLayerPipelineStageAssignment(layer, node_index))
+      if isinstance(layer, extensions_base.KerasExtensionBase):
+        output.append(
+            FunctionalNestedModelPipelineStageAssignment(
+                layer, node_index, layer.get_pipeline_stage_assignment()))
+      else:
+        output.append(FunctionalLayerPipelineStageAssignment(
+            layer, node_index))
 
     return output
 
   def _validate_pipeline_stage_assignment(self, pipeline_stage_assignment):
-    # A functional pipeline stage assignment is valid if the graph can be
-    # scheduled.
+    # A pipeline stage assignment is valid if the graph can be scheduled.
     self._get_pipelined_post_order(pipeline_stage_assignment)
 
   def _get_pipelining_from_nodes_supported(self):
@@ -560,10 +486,8 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
       return (hasattr(node, "_pipeline_stage")
               or hasattr(node.outbound_layer, "_pipeline_stage"))
 
-    # Input tensors don't get a pipeline stage so skip them.
     any_node_has_pipeline_stage = any(
-        node_has_pipeline_stage(node)
-        for node in post_order[len(self.inputs):])
+        node_has_pipeline_stage(node) for node in post_order)
 
     if not any_node_has_pipeline_stage:
       return
@@ -571,7 +495,17 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     # If any node has pipelining attached to it, then they all need it.
     # Create pipeline stage assignments.
     pipeline_stage_assignment = []
-    for node in post_order[len(self.inputs):]:
+    for node in post_order:
+      layer = node.layer
+      node_index = layer._inbound_nodes.index(node)  # pylint: disable=protected-access
+
+      if isinstance(layer, extensions_base.KerasExtensionBase):
+        # If layer is a nested model.
+        pipeline_stage_assignment.append(
+            FunctionalNestedModelPipelineStageAssignment(
+                layer, node_index, layer.get_pipeline_stage_assignment()))
+        continue
+
       if not hasattr(node, "_pipeline_stage"):
         if not hasattr(node.outbound_layer, "_pipeline_stage"):
           raise ValueError(
@@ -581,8 +515,6 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
               f"layer is constructed, or each time a layer is called. "
               f"Different pipeline stages can assigned to each call.")
         node._pipeline_stage = node.outbound_layer._pipeline_stage  # pylint: disable=protected-access
-      layer = node.layer
-      node_index = layer._inbound_nodes.index(node)  # pylint: disable=protected-access
       pipeline_stage_assignment.append(
           FunctionalLayerPipelineStageAssignment(
               layer, node_index, pipeline_stage=node._pipeline_stage))  # pylint: disable=protected-access
@@ -613,36 +545,19 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
       ValueError: `pipeline_stage_assignment` is not a valid assignment.
     """
 
-    if not isinstance(pipeline_stage_assignment, list):
-      raise ValueError("`pipeline_stage_assignment` needs to be a list")
-
-    num_invocations = len(self._network_nodes) - len(self.inputs)
-    if len(pipeline_stage_assignment) != num_invocations:
-      raise ValueError(
-          "The size of the provided `pipeline_stage_assignment` ({}) does not "
-          "match the total number of invocations of layers in the model "
-          "(currently {}). Each invocation of a layer in a model needs to be "
-          "assigned to a pipeline stage (excluding input layers).".format(
-              len(pipeline_stage_assignment), num_invocations))
-
-    if not all(
-        isinstance(assignment, FunctionalLayerPipelineStageAssignment)
-        for assignment in pipeline_stage_assignment):
-      raise ValueError(
-          "All elements of `pipeline_stage_assignment` need to be instances of "
-          "`FunctionalLayerPipelineStageAssignment`.")
-
     self._validate_pipeline_stage_assignment(pipeline_stage_assignment)
     self._pipeline_stage_assignment = pipeline_stage_assignment
 
     # Pipelining has changed therefore functions need to be recompiled.
     self._reset_ipu_extension()
+    self._pipeline_maximum_stage = None
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def reset_pipeline_stage_assignment(self):
     """Resets the pipeline stage assignment so that the model is no longer
     pipelined."""
     self._pipeline_stage_assignment = []
+    self._pipeline_maximum_stage = None
 
     # Pipelining has changed therefore functions need to be recompiled.
     self._reset_ipu_extension()
@@ -693,16 +608,6 @@ class FunctionalExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
     self._print_pipeline_stage_assignment_summary_impl(print_assignment_fn,
                                                        headers, column_widths,
                                                        line_length, print_fn)
-
-  @tf.__internal__.tracking.no_automatic_dependency_tracking
-  def _get_pipeline_maximum_pipeline_stage(self):
-    assert self._is_pipelined()
-    if self._pipeline_maximum_stage is None:
-      self._pipeline_maximum_stage = -1
-      for assignment in self._pipeline_stage_assignment:
-        self._pipeline_maximum_stage = max(self._pipeline_maximum_stage,
-                                           assignment.pipeline_stage)
-    return self._pipeline_maximum_stage
 
   def _validate_call_function(self):
     call_function_overridden = not (

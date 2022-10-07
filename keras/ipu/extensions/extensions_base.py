@@ -50,6 +50,7 @@ from keras.ipu.extensions import data_adapter as ipu_data_adapter
 from keras.ipu.extensions import polling_thread
 from keras.ipu.extensions import extensions_util
 from keras.ipu.extensions import data_feed_manager
+from keras.ipu.extensions import pipeline_stage_assignment as assignment_module
 from keras.ipu.optimizers import als_optimizer as als
 from keras.ipu.optimizers import gradient_accumulation_optimizer as gao_v2
 from keras.engine import base_layer_utils
@@ -203,6 +204,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     self._pipelining_gradient_accumulation_steps_per_replica = None
     self._pipelining_device_mapping = None
     self._pipelining_accumulate_outfeed = None
+    self._pipeline_maximum_stage = None
     self._pipelining_kwargs = dict()
 
     # Gradient accumulation.
@@ -621,11 +623,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     depth_keys = list(nodes_by_depth.keys())
     depth_keys.sort(reverse=True)
 
-    visited_set = set()
-    for x in self.inputs:
-      visited_set.add(str(id(x)))
-      post_order_node_execution.append(x)
-
+    visited_set = set(str(id(x)) for x in self.inputs)
     for depth in depth_keys:
       nodes = nodes_by_depth[depth]
       for node in nodes:
@@ -637,13 +635,40 @@ class KerasExtensionBase(base_layer.KerasExtension):
           # Node is not computable, skip.
           continue
 
+        visited_set.update(node.flat_output_ids)
+
         post_order_node_execution.append(node)
 
-        for x_id in node.flat_output_ids:
-          visited_set.add(x_id)
-
-    assert len(post_order_node_execution) == len(self._network_nodes)
+    assert len(post_order_node_execution) == (len(self._network_nodes) -
+                                              len(self.inputs))
     return post_order_node_execution
+
+  def _compute_pipeline_tensor_usage_count(self, post_order_per_stage,
+                                           pipeline_outputs):
+    # Adapted from _compute_tensor_usage_count in functional.py
+    # Pipelining uses a different set of nodes/tensors standard execution
+    # and so needs its own version of this.
+    tensor_usage_count = collections.Counter()
+    available_tensors = set(str(id(tensor)) for tensor in self.inputs)
+
+    last_stage_id = self._get_pipeline_maximum_pipeline_stage()
+    for stage_id in range(last_stage_id + 1):
+      for node in post_order_per_stage[stage_id]:
+        input_tensors = {
+            str(id(tensor))
+            for tensor in tf.nest.flatten(node.keras_inputs)
+        }
+        if input_tensors.issubset(available_tensors):
+          for tensor in tf.nest.flatten(node.keras_inputs):
+            tensor_usage_count[str(id(tensor))] += 1
+
+          for output_tensor in tf.nest.flatten(node.outputs):
+            available_tensors.add(str(id(output_tensor)))
+
+    for tensor in pipeline_outputs:
+      tensor_usage_count[str(id(tensor))] += 1
+
+    return tensor_usage_count
 
   def _make_pipeline(self,
                      iterations,
@@ -667,9 +692,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
         data_adapter.unpack_x_y_sample_weight(input_dtypes)
 
       # Get the post order schedule with node to pipeline stage assignment.
-      post_order_nodes_and_assignment = self._get_pipeline_post_order()
-      last_stage_id = max(post_order_nodes_and_assignment)
-      tensor_usage_count = self._tensor_usage_count
+      post_order_per_stage, pipeline_outputs = self._get_pipeline_post_order()
+      last_stage_id = self._get_pipeline_maximum_pipeline_stage()
+      tensor_usage_count = self._compute_pipeline_tensor_usage_count(
+          post_order_per_stage, pipeline_outputs)
 
       # Dictionaries for mapping processed tensors between stages.
       tensor_dict = collections.OrderedDict()
@@ -744,8 +770,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
             start_idx = end_idx
         num_tensors_per_key.clear()
 
-        for node in post_order_nodes_and_assignment[stage_id][
-            layer_start_idx:]:
+        for node in post_order_per_stage[stage_id][layer_start_idx:]:
           assert not node.is_input
 
           # Set up the arguments and execute the layer.
@@ -773,7 +798,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
         if stage_id == last_stage_id:
           output_tensors = []
-          for x in self.outputs:
+          for x in pipeline_outputs:
             x_id = str(id(x))
             assert x_id in tensor_dict, 'Could not compute output ' + str(x)
             output_tensors.append(tensor_dict[x_id].pop())
@@ -814,7 +839,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
         return all_outputs
 
       computational_stages = []
-      for stage_id in sorted(post_order_nodes_and_assignment):
+      for stage_id in range(last_stage_id + 1):
         computational_stages.append(partial(stage, stage_id))
 
       if freeze_variables and input_signature is not None:
@@ -1881,9 +1906,29 @@ class KerasExtensionBase(base_layer.KerasExtension):
     # Like build, but with the ability to specify input dtypes.
     raise NotImplementedError
 
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _get_pipeline_post_order(self):
     """Get a dict of pipeline stage to list of nodes to execute for all the
     nodes in the model. Input layers/nodes are assigned to stage 0."""
+    post_order_per_stage, pipeline_outputs = self._get_pipelined_post_order(
+        self._pipeline_stage_assignment)
+
+    max_stage = max(post_order_per_stage)
+    expected_stages = set(range(max_stage + 1))
+    actual_stages = set(post_order_per_stage)
+    if actual_stages != expected_stages:
+      missing_stages = sorted(expected_stages - actual_stages)
+      raise RuntimeError(
+          f"All stages in a pipeline must have at lease one layer assigned "
+          f"to them. The highest stage with an assignment is stage"
+          f" {max_stage}, however the preceeding stages {missing_stages} "
+          f"had no assignments.")
+    return post_order_per_stage, pipeline_outputs
+
+  def _get_pipelined_post_order(self, pipeline_stage_assignment, inputs=None):
+    # Similar to _get_pipeline_post_order but allows any pipeline stage
+    # assignment to be passed, and supports passing explicit input tensors.
+    # Used internally by _get_pipeline_post_order.
     raise NotImplementedError
 
   def get_pipeline_stage_assignment(self):
@@ -1934,9 +1979,28 @@ class KerasExtensionBase(base_layer.KerasExtension):
       else:
         print_fn('_' * line_length)
 
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _get_pipeline_maximum_pipeline_stage(self):
     """Returns the maximum pipeline stage assignment"""
-    raise NotImplementedError
+    assert self._is_pipelined()
+    if self._pipeline_maximum_stage is not None:
+      return self._pipeline_maximum_stage
+
+    def get_max_assignment(assignments):
+      return max(
+          # If assignment is for a standard layer.
+          x.pipeline_stage if isinstance(x, (
+              assignment_module.ModelLayerPipelineStageAssignment,
+              assignment_module.FunctionalLayerPipelineStageAssignment,
+              assignment_module.SequentialLayerPipelineStageAssignment))
+          # If assignment is for is a nested model, recursively search its
+          # assignments.
+          else get_max_assignment(last_assignment.pipeline_stage_assignments)
+          for x in assignments)
+
+    self._pipeline_maximum_stage = get_max_assignment(
+        self._pipeline_stage_assignment)
+    return self._pipeline_maximum_stage
 
   def _validate_call_function(self):
     """

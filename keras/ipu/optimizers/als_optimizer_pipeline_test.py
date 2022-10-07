@@ -24,7 +24,7 @@ from tensorflow.python.ipu.ipu_strategy import IPUStrategyV1
 
 import keras
 from keras import layers
-from keras.ipu.extensions.functional_extensions import PipelineStage
+from keras.ipu.extensions import PipelineStage
 from keras.ipu.layers import CaptureUpstreamGradients
 from keras.ipu.optimizers import ALSOptimizer
 

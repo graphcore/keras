@@ -38,6 +38,7 @@ py_library(
         "extensions_util.py",
         "functional_extensions.py",
         "model_extensions.py",
+        "pipeline_stage_assignment.py",
         "polling_thread.py",
         "register_extensions.py",
         "sequential_extensions.py",
@@ -132,6 +133,21 @@ tf_py_test(
     name = "model_pipeline_api_test",
     size = "large",
     srcs = ["model_pipeline_api_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//:expect_absl_installed",
+        "//:expect_numpy_installed",
+        "//:expect_tensorflow_installed",
+        "//keras",
+        "//keras:combinations",
+        "//keras/api:keras_api",
+    ],
+)
+
+tf_py_test(
+    name = "nested_pipeline_api_test",
+    size = "large",
+    srcs = ["nested_pipeline_api_test.py"],
     python_version = "PY3",
     deps = [
         "//:expect_absl_installed",

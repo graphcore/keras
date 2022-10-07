@@ -77,29 +77,29 @@ class ModelWithPipelineStageAssignments(training_module.Model):  # pylint: disab
 
     # Apply stage to layer, this can be overridden by stages assigned to
     # specific nodes.
-    with extensions.functional_extensions.PipelineStage(2):
+    with extensions.pipeline_stage_assignment.PipelineStage(2):
       self.dense_layer_1 = layers.Dense(4)
 
     self.dense_layer_2 = layers.Dense(8)
 
   def call(self, inputs):  # pylint: disable=arguments-differ
     x1, x2 = inputs
-    with extensions.functional_extensions.PipelineStage(0):
+    with extensions.pipeline_stage_assignment.PipelineStage(0):
       x1 = self.flatten_layer(x1)
-    with extensions.functional_extensions.PipelineStage(1):
+    with extensions.pipeline_stage_assignment.PipelineStage(1):
       x2 = self.flatten_layer(x2)
 
     # Already has stage 2 assigned to the layer.
     x1 = self.dense_layer_1(x1)
 
     # Overrides layer assignment (stage 2).
-    with extensions.functional_extensions.PipelineStage(3):
+    with extensions.pipeline_stage_assignment.PipelineStage(3):
       x2 = self.dense_layer_1(x2)
 
-    with extensions.functional_extensions.PipelineStage(4):
+    with extensions.pipeline_stage_assignment.PipelineStage(4):
       x1 = self.dense_layer_2(x1)
 
-    with extensions.functional_extensions.PipelineStage(5):
+    with extensions.pipeline_stage_assignment.PipelineStage(5):
       x2 = self.dense_layer_2(x2)
 
     return x1, x2
@@ -114,7 +114,7 @@ class ModelWithMissingPipelineStage(training_module.Model):  # pylint: disable=a
 
   def call(self, inputs):  # pylint: disable=arguments-differ
     x = inputs
-    with extensions.functional_extensions.PipelineStage(0):
+    with extensions.pipeline_stage_assignment.PipelineStage(0):
       x = self.flatten_layer(x)
 
     # Create dense layer node outside of PipelineStage scope.
@@ -271,8 +271,8 @@ class ModelPipelineApiTest(tf.test.TestCase, parameterized.TestCase):
       assignments[0] = None
       with self.assertRaisesRegex(
           ValueError,
-          "All elements of `pipeline_stage_assignment` must be instances of "
-          "`ModelLayerPipelineStageAssignment`."):
+          r"The pipeline stage assignment for layer .* in .* must be an "
+          r"instance of `ModelLayerPipelineStageAssignment`."):
         m.set_pipeline_stage_assignment(assignments)
 
   @testing_utils.run_v2_only
@@ -335,13 +335,21 @@ class ModelPipelineApiTest(tf.test.TestCase, parameterized.TestCase):
       assignments = m.get_pipeline_stage_assignment()
       for i, assignment in enumerate(assignments):
         assignment.pipeline_stage = i * 2
+      m.set_pipeline_stage_assignment(assignments)
+      m.set_pipelining_options(device_mapping=[0] * 6,
+                               gradient_accumulation_steps_per_replica=12)
+
+      inputs = [
+          np.ones(shape=(6, 32), dtype=np.int32),
+          np.ones(shape=(6, 32), dtype=np.int32)
+      ]
+
       with self.assertRaisesRegex(
-          ValueError,
-          r"Pipeline stage assignments must start at 0 and be strictly "
-          r"increasing. The highest assignment found in "
-          r"`pipeline_stage_assignment` was stage 10, however the "
-          r"preceeding stages \[1, 3, 5, 7, 9\] had no assignments."):
-        m.set_pipeline_stage_assignment(assignments)
+          RuntimeError,
+          r"All stages in a pipeline must have at lease one layer assigned to "
+          r"them. The highest stage with an assignment is stage 10, however "
+          r"the preceeding stages \[1, 3, 5, 7, 9\] had no assignments."):
+        m.predict(inputs, batch_size=1)
 
   @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithDependencyOnLaterStage(self):

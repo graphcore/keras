@@ -20,10 +20,13 @@ IPU specific Keras integration
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=unused-import
-from keras.ipu.extensions.functional_extensions import PipelineStage
-from keras.ipu.extensions.functional_extensions import FunctionalLayerPipelineStageAssignment
-from keras.ipu.extensions.sequential_extensions import SequentialLayerPipelineStageAssignment
-from keras.ipu.extensions.model_extensions import ModelLayerPipelineStageAssignment
+from keras.ipu.extensions import PipelineStage
+from keras.ipu.extensions import ModelLayerPipelineStageAssignment
+from keras.ipu.extensions import FunctionalLayerPipelineStageAssignment
+from keras.ipu.extensions import SequentialLayerPipelineStageAssignment
+from keras.ipu.extensions import NestedModelPipelineStageAssignment
+from keras.ipu.extensions import FunctionalNestedModelPipelineStageAssignment
+from keras.ipu.extensions import SequentialNestedModelPipelineStageAssignment
 # pylint: enable=unused-import
 
 __ipu__built__ = '1'

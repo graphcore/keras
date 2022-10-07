@@ -18,11 +18,15 @@ IPU specific Keras extensions
 """
 
 # pylint: disable=unused-import
-from keras.ipu.extensions.functional_extensions import PipelineStage
-from keras.ipu.extensions.functional_extensions import FunctionalLayerPipelineStageAssignment
+from keras.ipu.extensions.pipeline_stage_assignment import PipelineStage
+from keras.ipu.extensions.pipeline_stage_assignment import ModelLayerPipelineStageAssignment
+from keras.ipu.extensions.pipeline_stage_assignment import FunctionalLayerPipelineStageAssignment
+from keras.ipu.extensions.pipeline_stage_assignment import SequentialLayerPipelineStageAssignment
+from keras.ipu.extensions.pipeline_stage_assignment import NestedModelPipelineStageAssignment
+from keras.ipu.extensions.pipeline_stage_assignment import FunctionalNestedModelPipelineStageAssignment
+from keras.ipu.extensions.pipeline_stage_assignment import SequentialNestedModelPipelineStageAssignment
+
 from keras.ipu.extensions.functional_extensions import FunctionalExtension
-from keras.ipu.extensions.sequential_extensions import SequentialLayerPipelineStageAssignment
 from keras.ipu.extensions.sequential_extensions import SequentialExtension
-from keras.ipu.extensions.model_extensions import ModelLayerPipelineStageAssignment
 from keras.ipu.extensions.model_extensions import ModelExtension
 # pylint: enable=unused-import

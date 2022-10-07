@@ -124,8 +124,8 @@ class SequentialPipelineApiTest(tf.test.TestCase):
       # Test wrong length.
       with self.assertRaisesRegex(
           ValueError,
-          r"The size of the provided `pipeline_stage_assignment` \(8\) does "
-          r"not match the number of layers in the model \(currently 10\)"):
+          r"The length of the provided `pipeline_stage_assignment` \(8\) does "
+          r"not match the number of layers in the graph \(10\)."):
         m.set_pipeline_stage_assignment(list(range(8)))
 
       # Test indexes match.

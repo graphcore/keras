@@ -48,16 +48,16 @@ def get_model_with_assignments():
   d1 = layers.Input(32)
   d2 = layers.Input(32)
 
-  with extensions.functional_extensions.PipelineStage(0):
+  with extensions.pipeline_stage_assignment.PipelineStage(0):
     f1 = layers.Flatten()(d1)
-  with extensions.functional_extensions.PipelineStage(1):
+  with extensions.pipeline_stage_assignment.PipelineStage(1):
     f2 = layers.Flatten()(d2)
-  with extensions.functional_extensions.PipelineStage(2):
+  with extensions.pipeline_stage_assignment.PipelineStage(2):
     x1 = layers.Dense(4)(f1)
-  with extensions.functional_extensions.PipelineStage(3):
+  with extensions.pipeline_stage_assignment.PipelineStage(3):
     x2 = layers.Dense(4)(f2)
 
-  with extensions.functional_extensions.PipelineStage(4):
+  with extensions.pipeline_stage_assignment.PipelineStage(4):
     # Apply stage to layer, this can be overridden by stages assigned to
     # specific nodes.
     l = layers.Dense(8)
@@ -65,7 +65,7 @@ def get_model_with_assignments():
   # Already has stage 2 assigned to the layer.
   o1 = l(x1)
 
-  with extensions.functional_extensions.PipelineStage(5):
+  with extensions.pipeline_stage_assignment.PipelineStage(5):
     # Overrides layer assignment (stage 4).
     o2 = l(x2)
 
@@ -76,7 +76,7 @@ def get_model_with_partial_assignments():
   d1 = layers.Input(32)
   d2 = layers.Input(32)
 
-  with extensions.functional_extensions.PipelineStage(0):
+  with extensions.pipeline_stage_assignment.PipelineStage(0):
     f1 = layers.Flatten()(d1)
   f2 = layers.Flatten()(d2)
   x1 = layers.Dense(4)(f1)
@@ -91,7 +91,7 @@ def check_assignments(instance, assignments):
   instance.assertTrue(
       all(
           isinstance(
-              assignment, extensions.functional_extensions.
+              assignment, extensions.pipeline_stage_assignment.
               FunctionalLayerPipelineStageAssignment)
           for assignment in assignments))
 
@@ -184,9 +184,8 @@ class FunctionalPipelineApiTest(tf.test.TestCase):
       assignments.pop()
       with self.assertRaisesRegex(
           ValueError,
-          r"The size of the provided `pipeline_stage_assignment` \(5\) does "
-          r"not match the total number of invocations of layers in the model "
-          r"\(currently 6\)."):
+          r"The length of the provided `pipeline_stage_assignment` \(5\) does "
+          r"not match the number of layers in the graph \(6\)."):
         m.set_pipeline_stage_assignment(assignments)
 
   @testing_utils.run_v2_only
@@ -204,8 +203,8 @@ class FunctionalPipelineApiTest(tf.test.TestCase):
       assignments[0] = None
       with self.assertRaisesRegex(
           ValueError,
-          r"All elements of `pipeline_stage_assignment` need to be instances "
-          r"of `FunctionalLayerPipelineStageAssignment`."):
+          r"The pipeline stage assignment for layer .* in .* must be an "
+          r"instance of `FunctionalLayerPipelineStageAssignment`."):
         m.set_pipeline_stage_assignment(assignments)
 
   @testing_utils.run_v2_only
@@ -224,8 +223,31 @@ class FunctionalPipelineApiTest(tf.test.TestCase):
         assignment.pipeline_stage = i
       with self.assertRaisesRegex(
           ValueError,
-          r"Layer dense.* with node index 0 has not been assigned a pipeline "
-          r"stage."):
+          r"Layer dense.* with node_index 0 has not been assigned a pipeline "
+          r"stage in `pipeline_stage_assignment`."):
+        m.set_pipeline_stage_assignment(assignments)
+
+  @testing_utils.run_v2_only
+  def testSetPipelineStageAssignmentWithAssignmentForNonExistantNode(self):
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 1
+    cfg.configure_ipu_system()
+
+    strategy = ipu_strategy.IPUStrategyV1()
+    with strategy.scope():
+      m = get_simple_model()
+
+      # Test node exists.
+      assignments = m.get_pipeline_stage_assignment()
+      for i, assignment in enumerate(assignments):
+        assignment.pipeline_stage = i
+      temp = assignments[0]
+      assignments[0] = assignments[1]
+      assignments[1] = temp
+      with self.assertRaisesRegex(
+          ValueError,
+          "The order of `pipeline_stage_assignment` does not match the "
+          "post-order generated from the graph"):
         m.set_pipeline_stage_assignment(assignments)
 
   @testing_utils.run_v2_only
@@ -242,12 +264,21 @@ class FunctionalPipelineApiTest(tf.test.TestCase):
       assignments = m.get_pipeline_stage_assignment()
       for i, assignment in enumerate(assignments):
         assignment.pipeline_stage = i * 2
+      m.set_pipeline_stage_assignment(assignments)
+      m.set_pipelining_options(device_mapping=[0] * 6,
+                               gradient_accumulation_steps_per_replica=12)
+
+      inputs = [
+          np.ones(shape=(6, 32), dtype=np.int32),
+          np.ones(shape=(6, 32), dtype=np.int32)
+      ]
+
       with self.assertRaisesRegex(
-          ValueError,
-          r"Pipeline stages in the graph need to be strictly increasing, found "
-          r"pipeline stages 0, 2, 4, 6, 8, 10, however the following pipeline "
-          r"stages are missing 1, 3, 5, 7, 9."):
-        m.set_pipeline_stage_assignment(assignments)
+          RuntimeError,
+          r"All stages in a pipeline must have at lease one layer assigned to "
+          r"them. The highest stage with an assignment is stage 10, however "
+          r"the preceeding stages \[1, 3, 5, 7, 9\] had no assignments."):
+        m.predict(inputs, batch_size=1)
 
   @testing_utils.run_v2_only
   def testSetPipelineStageAssignmentWithDependencyOnLaterStage(self):
