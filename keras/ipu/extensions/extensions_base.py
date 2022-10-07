@@ -1966,18 +1966,25 @@ class KerasExtensionBase(base_layer.KerasExtension):
         line += ' ' * (positions[i] - len(line))
       print_fn(line)
 
-    print_fn('Model: "{}"'.format(self.name))
+    print_fn(f'Model: "{self.name}"')
     print_fn('_' * line_length)
     print_row(headers)
     print_fn('=' * line_length)
 
-    for i, assignment in enumerate(assignments):
-      print_assignment_fn(assignment, print_row)
+    def print_assignments(assignments):
+      for i, assignment in enumerate(assignments):
+        if assignment.is_nested_model:
+          print_fn(f'Nested Model: "{assignment.nested_model.name}"')
+          print_fn('-' * line_length)
+          print_assignments(assignment.pipeline_stage_assignments)
+        else:
+          print_assignment_fn(assignment, print_row)
+          if i == len(assignments) - 1 or assignments[i + 1].is_nested_model:
+            print_fn('=' * line_length)
+          else:
+            print_fn('_' * line_length)
 
-      if i == len(assignments) - 1:
-        print_fn('=' * line_length)
-      else:
-        print_fn('_' * line_length)
+    print_assignments(assignments)
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _get_pipeline_maximum_pipeline_stage(self):
@@ -1995,7 +2002,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
               assignment_module.SequentialLayerPipelineStageAssignment))
           # If assignment is for is a nested model, recursively search its
           # assignments.
-          else get_max_assignment(last_assignment.pipeline_stage_assignments)
+          else get_max_assignment(x.pipeline_stage_assignments)
           for x in assignments)
 
     self._pipeline_maximum_stage = get_max_assignment(

@@ -248,10 +248,7 @@ def set_assignments(model):
 
   def setup_recursive(assignments, n):
     for assignment in assignments:
-      if isinstance(assignment,
-                    (extensions.NestedModelPipelineStageAssignment,
-                     extensions.FunctionalNestedModelPipelineStageAssignment,
-                     extensions.SequentialNestedModelPipelineStageAssignment)):
+      if assignment.is_nested_model:
         n = setup_recursive(assignment.pipeline_stage_assignments, n)
       else:
         assignment.pipeline_stage = n
@@ -285,10 +282,7 @@ def check_default_assignments(test, model):
 
   def check_recursive(assignments):
     for assignment in assignments:
-      if isinstance(assignment,
-                    (extensions.NestedModelPipelineStageAssignment,
-                     extensions.FunctionalNestedModelPipelineStageAssignment,
-                     extensions.SequentialNestedModelPipelineStageAssignment)):
+      if assignment.is_nested_model:
         check_recursive(assignment.pipeline_stage_assignments)
       else:
         test.assertEqual(assignment.pipeline_stage, None)

@@ -152,6 +152,11 @@ class ModelLayerPipelineStageAssignment:
       value (int): The pipeline stage to assign this layer to."""
     self._pipeline_stage = value
 
+  @property
+  def is_nested_model(self):
+    """Whether this assignment is for a nested model."""
+    return False
+
   def __str__(self):
     return ("Layer: {} (node index {}) is assigned to pipeline "
             "stage: {}".format(self.layer.name, self.node_index,
@@ -211,6 +216,11 @@ class SequentialLayerPipelineStageAssignment:
     """The pipeline stage this layer has been assigned to. If `None`,
     then this layer has not been assigned to a pipeline stage."""
     return self._pipeline_stage
+
+  @property
+  def is_nested_model(self):
+    """Whether this assignment is for a nested model."""
+    return False
 
   @pipeline_stage.setter
   def pipeline_stage(self, value):
@@ -273,6 +283,11 @@ class NestedModelPipelineStageAssignment:
   def pipeline_stage_assignments(self):
     """The pipeline stage assignments for this nested model."""
     return list(self._pipeline_stage_assignments)
+
+  @property
+  def is_nested_model(self):
+    """Whether this assignment is for a nested model."""
+    return True
 
   def __str__(self):
     assignments_string = "".join(f"\n  {x}"
@@ -341,6 +356,11 @@ class SequentialNestedModelPipelineStageAssignment:
   def pipeline_stage_assignments(self):
     """The pipeline stage assignments for this nested model."""
     return list(self._pipeline_stage_assignments)
+
+  @property
+  def is_nested_model(self):
+    """Whether this assignment is for a nested model."""
+    return True
 
   def __str__(self):
     assignments_string = "".join(f"\n  {x}"
