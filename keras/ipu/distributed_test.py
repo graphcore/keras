@@ -25,7 +25,7 @@ from keras import layers
 from keras.engine import data_adapter
 from keras.optimizer_v2 import gradient_descent
 from tensorflow.python import ipu
-from tensorflow.python.ipu import distributed as hvd
+from tensorflow.python.ipu.distributed import broadcast
 from tensorflow.python.ipu import ipu_strategy
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python.ipu.distributed import popdist_strategy
@@ -62,20 +62,19 @@ def test_dataset(length=None, batch_size=1, x_val=1.0, y_val=0.2):
 class DistributedTF2Test(tf.test.TestCase):
   @classmethod
   def setUpClass(cls):
-    hvd.init()
     cls.strategy = popdist_strategy.PopDistStrategy()
 
   def assert_all_instances_equal(self, local_value, name=None):
     # Assert that the current instance has the same value as the root instance.
     local_tensor = tf.constant(local_value)
-    root_tensor = hvd.broadcast(local_tensor, root_rank=0)
+    root_tensor = broadcast(local_tensor, root_rank=0)
     np.testing.assert_equal(local_value, root_tensor.numpy(), name)
 
   def assert_all_instances_not_equal(self, local_value):
     local_tensor = tf.constant(local_value)
-    root_tensor = hvd.broadcast(local_tensor, root_rank=0)
+    root_tensor = broadcast(local_tensor, root_rank=0)
 
-    if hvd.local_rank() == 0:
+    if popdist.getInstanceIndex() == 0:
       return
 
     assert not np.equal(local_value, root_tensor.numpy()).any()
@@ -126,8 +125,6 @@ class DistributedTF2Test(tf.test.TestCase):
     steps_to_run = 10
     batch_size = 8
 
-    hvd.init()
-
     strategy = ipu_strategy.IPUStrategy()
 
     with strategy.scope():
@@ -163,8 +160,6 @@ class DistributedTF2Test(tf.test.TestCase):
 
     steps_to_run = 10
     batch_size = 8
-
-    hvd.init()
 
     with self.strategy.scope():
       dataset = test_dataset(popdist.getNumTotalReplicas() * batch_size *
