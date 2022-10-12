@@ -173,11 +173,16 @@ class.
 Sequential model
 ________________
 
-To enable IPU pipelining for a ``Sequential`` model (an instance of
-`keras.Sequential`), a list of per-layer pipeline stage
-assignments should be passed to the
+
+Enabling pipelining for a ``Sequential`` model requires assigning each layer in
+the model to a pipeline stage, by calling
+:py:meth:`~keras.ipu.extensions.SequentialExtension.set_pipeline_stage_assignment`.
+
+If your model does not contain any nested Keras models, a simple overload of
 :py:meth:`~keras.ipu.extensions.SequentialExtension.set_pipeline_stage_assignment`
-method of the model.
+can be used which accepts a list of integers. The integers in the list
+correspond to the layers in the model, each specifying which pipeline stage the
+corresponding layer is assigned to.
 
 For example, a simple four layer ``Sequential`` model could be assigned to two
 different pipeline stages as follows:
@@ -191,6 +196,33 @@ different pipeline stages as follows:
 You can confirm which layers are assigned to which stages using the
 :py:meth:`~keras.ipu.extensions.SequentialExtension.print_pipeline_stage_assignment_summary`
 method of the model.
+
+Pipelining a model containing nested models
+===========================================
+
+If your ``Sequential`` model contains nested Keras models, you can use
+:py:meth:`~keras.ipu.extensions.SequentialExtension.get_pipeline_stage_assignment`.
+This returns a list of pipeline stage assignment objects, corresponding to the
+layers in the model, which you can inspect and modify.
+
+Each layer in the model has an associated
+:py:class:`~keras.ipu.SequentialLayerPipelineStageAssignment`
+object, which indicates what pipeline stage that layer is assigned to.
+
+Each nested Keras model in the model has an associated
+:py:class:`~keras.ipu.SequentialNestedModelPipelineStageAssignment`
+containing a list of pipeline stage assignments which you can inspect and
+modify.
+
+Once you are done modifying the stage assignments, you can pass them to
+:py:meth:`~keras.ipu.extensions.SequentialExtension.set_pipeline_stage_assignment`
+to set them on the model. Pipeline stage assignments for nested Keras models
+will **NOT** be recursively set on each nested Keras model. The assignments are
+all stored on the root model (the model on which
+:py:meth:`~keras.ipu.extensions.SequentialExtension.set_pipeline_stage_assignment`
+was called) and they are only used when calling ``fit()``, ``predict()``, or
+``evaluate()`` on that model.
+
 
 Functional model
 ________________
@@ -226,16 +258,27 @@ Pipelining an existing functional model
 
 To pipeline an existing ``Functional`` model, you can use
 :py:meth:`~keras.ipu.extensions.FunctionalExtension.get_pipeline_stage_assignment`.
+This returns a list of pipeline stage assignment objects, corresponding to each
+invocation in the model which you can inspect and modify. Note that the list is
+in post-order, which means the assignments are returned in the order they will
+be executed.
+
 Each layer invocation in the model has an associated
 :py:class:`~keras.ipu.FunctionalLayerPipelineStageAssignment`
 object, which indicates what pipeline stage that invocation is assigned to.
-`get_pipeline_stage_assignment` returns a list of these stage assignments,
-which you can inspect and modify. Note that the list is in post-order, which
-means the assignments are returned in the order they will be executed.
 
-Once you are done modifying the stage assignments, you should use
+Each nested Keras model invocation in the model has an associated
+:py:class:`~keras.ipu.FunctionalNestedModelPipelineStageAssignment`
+containing a list of pipeline stage assignments which you can inspect and modify.
+
+Once you are done modifying the stage assignments, you can pass them to
 :py:meth:`~keras.ipu.extensions.FunctionalExtension.set_pipeline_stage_assignment`
-to set them on the model.
+to set them on the model. Pipeline stage assignments for nested Keras models
+will **NOT** be recursively set on each nested Keras model. The assignments are
+all stored on the root model (the model on which
+:py:meth:`~keras.ipu.extensions.FunctionalExtension.set_pipeline_stage_assignment`
+was called) and they are only used when calling ``fit()``, ``predict()``, or
+``evaluate()`` on that model.
 
 For example, a naive way of pipelining ResNet50 would be to assign everything
 up until the "conv4_block2_add" layer invocation to the first stage, then
@@ -307,17 +350,27 @@ Pipelining an existing model
 
 To pipeline an existing ``Model`` subclass, you must use
 :py:meth:`~keras.ipu.extensions.ModelExtension.get_pipeline_stage_assignment`.
+This returns a list of pipeline stage assignment objects, corresponding to each
+invocation in the model which you can inspect and modify. Note that the list is
+in post-order, which means the assignments are returned in the order they will
+be executed.
+
 Each layer invocation in the model has an associated
 :py:class:`~keras.ipu.ModelLayerPipelineStageAssignment`
 object, which indicates what pipeline stage that invocation is assigned to.
-:py:meth:`~keras.ipu.extensions.ModelExtension.get_pipeline_stage_assignment`
-returns a list of these stage assignments,
-which you can inspect and modify. Note that the list is in post-order, which
-means the assignments are returned in the order they will be executed.
 
-Once you are done modifying the stage assignments, you should use
+Each nested Keras model invocation in the model has an associated
+:py:class:`~keras.ipu.NestedModelPipelineStageAssignment` containing a list of
+pipeline stage assignments which you can inspect and modify.
+
+Once you are done modifying the stage assignments, you can pass them to
 :py:meth:`~keras.ipu.extensions.ModelExtension.set_pipeline_stage_assignment`
-to set them on the model.
+to set them on the model. Pipeline stage assignments for nested Keras models
+will **NOT** be recursively set on each nested Keras model. The assignments are
+all stored on the root model (the model on which
+:py:meth:`~keras.ipu.extensions.ModelExtension.set_pipeline_stage_assignment`
+was called) and they are only used when calling ``fit()``, ``predict()``, or
+``evaluate()`` on that model.
 
 Before you can get or set pipeline stage assignments, you must first call
 :py:meth:`keras.Model.build` on your model, specifying the input shapes.
