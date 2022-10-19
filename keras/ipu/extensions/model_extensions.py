@@ -285,7 +285,7 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     and `predict()`.
 
     When running `fit()`, `evaluate()` and `predict()` the callbacks the model
-    is configured with are executed after `steps_per_execution`steps have
+    is configured with are executed after `steps_per_execution` steps have
     executed.
     Enabling asynchronous callbacks means that the callbacks are invoked after
     every step, even when `steps_per_execution > 1`. This can reduce the latency

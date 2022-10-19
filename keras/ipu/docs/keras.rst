@@ -46,6 +46,14 @@ checkpoint), you must set ``steps_per_execution`` accordingly.
   before using ``fit()``, ``evaluate()`` and ``predict()``, even if no training
   is performed.
 
+.. note::
+
+  To achieve best performance when using pipelining, ``steps_per_execution``
+  should be set to a significantly larger value than the number of pipeline stages. If
+  ``steps_per_execution`` is too small for pipelining to work, your model will fail
+  to compile and the minimum value of ``steps_per_execution`` will be reported in the
+  error message.
+
 See the documentation for the
 `compile method <https://www.tensorflow.org/api_docs/python/tf/keras/Model#compile>`__
 for full details.
