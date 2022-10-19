@@ -25,7 +25,7 @@ from keras import layers
 from keras.engine import data_adapter
 from keras.optimizer_v2 import gradient_descent
 from tensorflow.python import ipu
-from tensorflow.python.ipu.distributed import broadcast
+from tensorflow.python.ipu.distributed.host_collective_ops import broadcast
 from tensorflow.python.ipu import ipu_strategy
 from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python.ipu.distributed import popdist_strategy
