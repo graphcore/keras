@@ -170,8 +170,7 @@ class ALSOptimizer(_OptimizerV2Wrapper):
         `keras.ipu.layers.capture_upstream_gradients.CaptureUpstreamGradients`
         or
         `keras.ipu.layers.capture_upstream_gradients.CaptureActivationGradients`
-      ).
-        Defaults to False.
+        ). Defaults to False.
       lpf_alpha: Low Pass Filtering (exponential type) coefficient, used for
         the collected gradient distributions when updating statistics. Setting
         this value to 1.0 will result in no statistical update of the
@@ -781,8 +780,8 @@ class ALSGradientAccumulationOptimizer(GradientAccumulationOptimizer):
   """An optimizer that provides Gradient Accumulation functionality to
   `keras.ipu.optimizers.ALSOptimizer` and its derivatives
   (`keras.ipu.optimizers.adam.ALSOptimizerAdam`,
-   `keras.ipu.optimizers.rmsprop.ALSOptimizerRMSProp` and
-   `keras.ipu.optimizers.gradient_descent.ALSOptimizerSGD`)
+  `keras.ipu.optimizers.rmsprop.ALSOptimizerRMSProp` and
+  `keras.ipu.optimizers.gradient_descent.ALSOptimizerSGD`)
   """
   def __init__(self,
                als_optimizer,
