@@ -296,7 +296,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     optimizer during training.
 
     Args:
-        data_handler (IPUDataHandler): The data handler created in `fit()`
+        data_handler (IPUDataHandler): The data handler created in `fit()`.
     """
     # Optimizer batch size depends on the specified batch size, the gradient
     # accumulation and the replication factor.
@@ -318,10 +318,23 @@ class KerasExtensionBase(base_layer.KerasExtension):
         gradient_accumulation_steps_per_replica * total_replicas
       logging.info(
           "Training is{}{}{}, your effective batch size is {}.".format(
-              " distributed" if is_distributed else "",
+              " distributed" if is_distributed else " not distributed",
               accumulating_n_batches if is_accumulated else "",
               across_n_replicas if is_distributed else "",
               effective_batch_size))
+
+    steps_per_epoch = data_handler._steps_per_epoch  # pylint: disable=protected-access
+    inferred_steps = data_handler._inferred_steps  # pylint: disable=protected-access
+    steps_per_epoch = steps_per_epoch if steps_per_epoch else inferred_steps
+    weight_updates_per_execution = \
+      steps_per_execution // gradient_accumulation_steps_per_replica
+    weight_updates_per_epoch = \
+      steps_per_epoch // gradient_accumulation_steps_per_replica
+    logging.info(
+        f"Doing {weight_updates_per_execution} weight "
+        f"update{'s' if weight_updates_per_execution > 1 else ''} per "
+        f"execution per replica, which is {weight_updates_per_epoch} "
+        f"per epoch per replica.")
 
   def _get_shard_count(self):
     """Returns how many shards the model is parallelized over.
