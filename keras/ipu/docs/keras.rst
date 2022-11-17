@@ -92,8 +92,13 @@ an :py:class:`~tensorflow.python.ipu.ipu_strategy.IPUStrategy` by calling the fo
   | ``Model`` subclass   | :py:meth:`~keras.ipu.extensions.ModelExtension.set_gradient_accumulation_options`      |
   +----------------------+----------------------------------------------------------------------------------------+
 
+This method can be used to configure gradient accumulation parameters in
+models that do not use pipelining, particularly `gradient_accumulation_steps_per_replica`
+and `gradient_accumulation_reduction_method`. See the respective API documentation for more
+details on these arguments.
 
-See the respective API documentation for more details.
+For pipelined models, these arguments can be passed to the `set_pipelining_options()` methods. See 
+:numref:`pipelining-options` for more details
 
 .. note::
 
