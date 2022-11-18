@@ -301,6 +301,17 @@ class ModelExtension(extensions_base.KerasExtensionBase):  # pylint: disable=abs
     """
     self._set_asynchronous_callbacks_impl(asynchronous)
 
+  def set_replication_options(self, replicated_metric_reduction_method='NONE'):
+    """Configure behaviour when using this model with replication.
+
+    Args:
+      replicated_metric_reduction_method: Cross-replica reduction method to use
+        when returning metrics which exist across multiple replicas.
+        Defaults to `ReplicatedMetricReductionMethod.NONE`
+        (see :class:`~keras.ipu.ReplicatedMetricReductionMethod`).
+    """
+    self._set_replication_options_impl(replicated_metric_reduction_method)
+
   def set_gradient_accumulation_options(
       self,
       gradient_accumulation_steps_per_replica=None,

@@ -29,4 +29,6 @@ from keras.ipu.extensions.pipeline_stage_assignment import SequentialNestedModel
 from keras.ipu.extensions.functional_extensions import FunctionalExtension
 from keras.ipu.extensions.sequential_extensions import SequentialExtension
 from keras.ipu.extensions.model_extensions import ModelExtension
+
+from keras.ipu.extensions.extensions_base import ReplicatedMetricReductionMethod
 # pylint: enable=unused-import

@@ -13,6 +13,7 @@
 # limitations under the License.
 # =============================================================================
 import numpy as np
+from absl.testing import parameterized
 
 import tensorflow.compat.v2 as tf
 
@@ -21,10 +22,42 @@ from tensorflow.python.ipu import test_utils as tu
 from tensorflow.python.ipu import ipu_strategy
 
 import keras
+from keras import keras_parameterized
 from keras import testing_utils
+from keras.ipu import ReplicatedMetricReductionMethod
 
 
-class IPUModelReplicatedTest(tf.test.TestCase):
+def calculate_metrics_cpu(x, y, loss, metrics, num_replicas, reduction_mode):
+  if not isinstance(metrics, list):
+    metrics = [metrics]
+
+  metrics = [loss] + metrics
+  x = np.array(x)
+  y = np.array(y)
+  data_per_replica = x.shape[0] // num_replicas
+  assert (x.shape[0] % num_replicas) == 0
+
+  # Split the input data per replica [replica, ...].
+  x = np.stack(np.split(x, data_per_replica), axis=1)
+  y = np.stack(np.split(y, data_per_replica), axis=1)
+
+  # [metric, replica, ...].
+  results = [[
+      metric(y[replica], x[replica]).numpy() for replica in range(num_replicas)
+  ] for metric in metrics]
+
+  if reduction_mode == ReplicatedMetricReductionMethod.NONE:
+    return [result[-1] for result in results]
+  if reduction_mode == ReplicatedMetricReductionMethod.LIST:
+    return results
+  if reduction_mode == ReplicatedMetricReductionMethod.SUM:
+    return [np.sum(result) for result in results]
+  if reduction_mode == ReplicatedMetricReductionMethod.MEAN:
+    return [np.mean(result) for result in results]
+  raise ValueError(f"Invalid reduction mode: {reduction_mode}")
+
+
+class IPUModelReplicatedTest(keras_parameterized.TestCase):
   @tu.test_uses_ipus(num_ipus=2)
   @testing_utils.run_v2_only
   def testPredictWithNumpyDataBs2Replicas2(self):
@@ -247,6 +280,43 @@ class IPUModelReplicatedTest(tf.test.TestCase):
     for cpu_predict, ipu_predict in zip(cpu_predict_out[1], predict_out[1]):
       np.testing.assert_almost_equal(cpu_predict[0], ipu_predict[0])
       np.testing.assert_almost_equal(cpu_predict[1], ipu_predict[1])
+
+  @parameterized.parameters(list(ReplicatedMetricReductionMethod))
+  @tu.test_uses_ipus(num_ipus=2)
+  @testing_utils.run_v2_only
+  def testMetricReduction(self, reduction_method):
+    cfg = IPUConfig()
+    cfg.auto_select_ipus = 2
+    tu.add_hw_ci_connection_options(cfg)
+    cfg.configure_ipu_system()
+
+    x = [0.0, 0.0, 0.0, 0.0]
+    y = [1.0, 2.0, 3.0, 4.0]
+    loss = tf.keras.metrics.MAE
+    metrics = [tf.keras.metrics.MSE]
+    expected_metric_values = calculate_metrics_cpu(x, y, loss, metrics, 2,
+                                                   reduction_method)
+
+    ds = tf.data.Dataset.from_tensor_slices((x, y))
+    ds = ds.batch(1, drop_remainder=True)
+
+    strategy = ipu_strategy.IPUStrategyV1()
+    with strategy.scope():
+      inputs = keras.Input(shape=1)
+      outputs = tf.keras.layers.Dense(1,
+                                      kernel_initializer='zeros',
+                                      use_bias=False,
+                                      trainable=False)(inputs)
+      model = tf.keras.Model(inputs, outputs)
+      model.build(input_shape=(1, 1))
+      model.compile(loss=loss, metrics=metrics, steps_per_execution=4)
+      model.set_replication_options(
+          replicated_metric_reduction_method=reduction_method)
+      actual_metric_values = model.evaluate(ds, steps=4)
+
+    # Check the results of each metric.
+    for i, _ in enumerate(metrics):
+      self.assertAllEqual(actual_metric_values[i], expected_metric_values[i])
 
 
 if __name__ == "__main__":

@@ -27,6 +27,8 @@ from keras.ipu.extensions import SequentialLayerPipelineStageAssignment
 from keras.ipu.extensions import NestedModelPipelineStageAssignment
 from keras.ipu.extensions import FunctionalNestedModelPipelineStageAssignment
 from keras.ipu.extensions import SequentialNestedModelPipelineStageAssignment
+
+from keras.ipu.extensions import ReplicatedMetricReductionMethod
 # pylint: enable=unused-import
 
 __ipu__built__ = '1'

@@ -38,12 +38,15 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ipu import ipu_infeed_queue
 from tensorflow.python.ipu import utils as ipu_utils
 from tensorflow.python.ipu.eager import backprop as ipu_backprop
+from tensorflow.python.ipu.ops import cross_replica_ops
 from tensorflow.python.ipu.ops import pipelining_ops
+from tensorflow.python.ipu.ops.all_to_all_op import all_gather
 from tensorflow.python.ipu import gradient_accumulation as ga
 from tensorflow.python.ipu.optimizers import gradient_accumulation_optimizer
 from tensorflow.python.ipu import serving
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer
+from tensorflow.python.util.tf_export import keras_export
 
 from keras import callbacks as callbacks_module
 from keras.ipu.extensions import data_adapter as ipu_data_adapter
@@ -71,6 +74,40 @@ from keras import optimizer_v1
 
 logged_steps_per_execution_warning = False
 _pvti_trace_channel = libpvti.createTraceChannel("Keras")
+
+
+@keras_export('keras.ipu.ReplicatedMetricReductionMethod')
+class ReplicatedMetricReductionMethod(enum.Enum):
+  """Cross-replica reduction method to use when returning metrics which exist
+  across multiple replicas.
+
+  * NONE: Do not perform any reduction. Return the metric values from the last
+          replica.
+  * LIST: For each metric return a list containing the values from every
+          replica. When using this option, the Keras progress bar output will
+          show the mean of the list values.
+  * SUM: Return a sum of the metric values from each replica.
+  * MEAN: Return a sum of the metric values from each replica,
+          scaled by (`1/num_replicas`).
+  """
+  NONE = 1
+  LIST = 2
+  SUM = 3
+  MEAN = 4
+
+  @classmethod
+  def parse(cls, value):
+    if isinstance(value, cls):
+      return value
+
+    if isinstance(value, str):
+      key = value.upper()
+      if key in cls.__members__:
+        return cls[key]
+
+    raise ValueError(f"Cannot parse {value} as a "
+                     "ReplicatedMetricReductionMethod. Valid values are: "
+                     f"{', '.join(cls._member_names_)}.")
 
 
 class _KerasOptimizerWrapper(tf_optimizer.Optimizer):
@@ -213,6 +250,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
     self._gradient_accumulation_reduction_method = \
       ga.GradientAccumulationReductionMethod.SUM
     self._use_v2_gradient_accumulation_optimizer = False
+
+    # Replication.
+    self._replicated_metric_reduction_method = \
+        ReplicatedMetricReductionMethod.NONE
 
     # Asynchronous callbacks.
     self._asynchronous_callbacks = False
@@ -530,6 +571,30 @@ class KerasExtensionBase(base_layer.KerasExtension):
     return extensions_util.merge_into_batch_dimension(results,
                                                       replication_factor)
 
+  def _reduce_metric(self, metric, replication_factor):
+    # If using replication, apply the configured reduction.
+    if replication_factor is None or replication_factor <= 1 or \
+        self._replicated_metric_reduction_method == \
+            ReplicatedMetricReductionMethod.NONE:
+      return metric
+
+    if self._replicated_metric_reduction_method == \
+        ReplicatedMetricReductionMethod.LIST:
+      return all_gather(metric, replication_factor)
+
+    if self._replicated_metric_reduction_method == \
+        ReplicatedMetricReductionMethod.SUM:
+      return cross_replica_ops.cross_replica_sum(metric, replication_factor)
+
+    if self._replicated_metric_reduction_method == \
+        ReplicatedMetricReductionMethod.MEAN:
+      return cross_replica_ops.cross_replica_mean(metric, replication_factor)
+
+    raise ValueError(
+        f"Cannot parse {self._replicated_metric_reduction_method} as a "  # pylint: disable=protected-access
+        f"ReplicatedMetricReductionMethod. Valid values are: "
+        f"{', '.join(ReplicatedMetricReductionMethod._member_names_)}.")
+
   def _ipu_train_step(self, opt):
     def _ipu_train_step_impl(self, optimizer, data):
       # Implementation of `Model.train_step` with support for:
@@ -560,19 +625,22 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
     return partial(_ipu_train_step_impl, self, opt)
 
-  def _make_single_ipu_train_function(self):
+  def _make_single_ipu_train_function(self, replication_factor):
     optimizer = _KerasOptimizerWrapper(self, self.optimizer)
     train_step = self._ipu_train_step(optimizer)
 
     @tf_function(jit_compile=True)
     def train_function(steps_per_execution, iterator, outfeed):
       for _ in tf.range(steps_per_execution):
-        outfeed.enqueue(train_step(next(iterator)))
+        outputs = train_step(next(iterator))
+        outputs = tf.nest.map_structure(
+            lambda x: self._reduce_metric(x, replication_factor), outputs)
+        outfeed.enqueue(outputs)
 
     return train_function
 
   def _make_single_ipu_train_function_with_gradient_accumulation(
-      self, gradient_accumulation_steps_per_replica):
+      self, gradient_accumulation_steps_per_replica, replication_factor):
     _sanity_check_optimizer(self.optimizer)
 
     if isinstance(self.optimizer, als.ALSOptimizer):
@@ -612,7 +680,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
     @tf_function(jit_compile=True)
     def train_function(steps_per_execution, iterator, outfeed):
       for _ in tf.range(steps_per_execution):
-        outfeed.enqueue(train_step(next(iterator)))
+        outputs = train_step(next(iterator))
+        outputs = tf.nest.map_structure(
+            lambda x: self._reduce_metric(x, replication_factor), outputs)
+        outfeed.enqueue(outputs)
 
     return train_function
 
@@ -891,11 +962,14 @@ class KerasExtensionBase(base_layer.KerasExtension):
                                add_loss=True,
                                add_optimizer=True)
 
-  def _make_single_ipu_test_function(self):
+  def _make_single_ipu_test_function(self, replication_factor):
     @tf_function(jit_compile=True)
     def test_function(steps_per_execution, iterator, outfeed):
       for _ in tf.range(steps_per_execution):
-        outfeed.enqueue(self.test_step(next(iterator)))
+        outputs = self.test_step(next(iterator))
+        outputs = tf.nest.map_structure(
+            lambda x: self._reduce_metric(x, replication_factor), outputs)
+        outfeed.enqueue(outputs)
 
     return test_function
 
@@ -905,11 +979,14 @@ class KerasExtensionBase(base_layer.KerasExtension):
                                add_loss=True,
                                add_optimizer=False)
 
-  def _make_single_ipu_predict_function(self):
+  def _make_single_ipu_predict_function(self, replication_factor):
     @tf_function(jit_compile=True)
     def predict_function(steps_per_execution, iterator, outfeed):
       for _ in tf.range(steps_per_execution):
-        outfeed.enqueue(self.predict_step(next(iterator)))
+        outputs = self.predict_step(next(iterator))
+        outputs = tf.nest.map_structure(
+            lambda x: self._reduce_metric(x, replication_factor), outputs)
+        outfeed.enqueue(outputs)
 
     return predict_function
 
@@ -925,7 +1002,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
                                input_signature=input_signature)
 
   def _make_ipu_train_function_wrapper(self):
-    def wrapper(pipeline_iterations, gradient_accumulation_steps_per_replica):
+    def wrapper(pipeline_iterations, gradient_accumulation_steps_per_replica,
+                replication_factor):
       with utils.no_automatic_dependency_tracking_scope(self):
         need_to_rerun = self._ipu_train_function is None
         if self._is_pipelined():
@@ -971,9 +1049,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
             if gradient_accumulation_steps_per_replica > 1:
               self._ipu_train_function = \
                 self._make_single_ipu_train_function_with_gradient_accumulation(
-                    gradient_accumulation_steps_per_replica)
+                    gradient_accumulation_steps_per_replica, replication_factor)
             else:
-              self._ipu_train_function = self._make_single_ipu_train_function()
+              self._ipu_train_function = self._make_single_ipu_train_function(
+                  replication_factor)
             self._compiled_gradient_accumulation_steps_per_replica = \
               gradient_accumulation_steps_per_replica
 
@@ -982,7 +1061,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     return wrapper
 
   def _make_ipu_test_function_wrapper(self):
-    def wrapper(pipeline_iterations):
+    def wrapper(pipeline_iterations, replication_factor):
       with utils.no_automatic_dependency_tracking_scope(self):
         need_to_rerun = self._ipu_test_function is None
         if self._is_pipelined():
@@ -1011,14 +1090,15 @@ class KerasExtensionBase(base_layer.KerasExtension):
             self._ipu_test_function = self._make_pipeline_ipu_test_function(
                 pipeline_iterations)
           else:
-            self._ipu_test_function = self._make_single_ipu_test_function()
+            self._ipu_test_function = self._make_single_ipu_test_function(
+                replication_factor)
 
       return self._ipu_test_function
 
     return wrapper
 
   def _make_ipu_predict_function_wrapper(self):
-    def wrapper(pipeline_iterations):
+    def wrapper(pipeline_iterations, replication_factor):
       with utils.no_automatic_dependency_tracking_scope(self):
         need_to_rerun = self._ipu_predict_function is None
         if self._is_pipelined():
@@ -1048,7 +1128,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
               self._make_pipeline_ipu_predict_function(pipeline_iterations)
           else:
             self._ipu_predict_function = \
-              self._make_single_ipu_predict_function()
+              self._make_single_ipu_predict_function(replication_factor)
 
       return self._ipu_predict_function
 
@@ -1057,6 +1137,12 @@ class KerasExtensionBase(base_layer.KerasExtension):
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _set_asynchronous_callbacks_impl(self, asynchronous):
     self._asynchronous_callbacks = asynchronous
+
+  @tf.__internal__.tracking.no_automatic_dependency_tracking
+  def _set_replication_options_impl(self, replicated_metric_reduction_method):
+    self._replicated_metric_reduction_method = \
+        ReplicatedMetricReductionMethod.parse(
+            replicated_metric_reduction_method)
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _set_gradient_accumulation_options_impl(
@@ -1245,6 +1331,10 @@ class KerasExtensionBase(base_layer.KerasExtension):
           self._gradient_accumulation_steps_per_replica
     config["gradient_accumulation_reduction_method"] = \
       self._gradient_accumulation_reduction_method.value
+
+    config["replicated_metric_reduction_method"] = \
+      self._replicated_metric_reduction_method.value
+
     config["asynchronous_callbacks"] = self._asynchronous_callbacks
 
     if self._gradient_accumulation_optimizer_kwargs:
@@ -1284,6 +1374,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
         "pipelining_device_mapping",
         "experimental_pipelining_normalize_gradients",
         "asynchronous_callbacks",
+        "replicated_metric_reduction_method",
         "infeed_kwargs",
         "outfeed_kwargs",
     ]
@@ -1298,19 +1389,21 @@ class KerasExtensionBase(base_layer.KerasExtension):
 
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def _from_base_config(self, config):
+    def get_enum(name, default):
+      return type(default)(config.get(name, default.value))
+
     self._gradient_accumulation_steps_per_replica = config.get(
         "gradient_accumulation_steps_per_replica", None)
     self._pipelining_gradient_accumulation_steps_per_replica = config.get(
         "pipelining_gradient_accumulation_steps_per_replica", None)
     self._pipelining_device_mapping = config.get("pipelining_device_mapping",
                                                  None)
-
-    reduction_method_int = \
-      config.get("gradient_accumulation_reduction_method",
-                 ga.GradientAccumulationReductionMethod.SUM.value)  # pylint: disable=line-too-long
-    self._gradient_accumulation_reduction_method = \
-      ga.GradientAccumulationReductionMethod(reduction_method_int)  # pylint: disable=line-too-long
-
+    self._gradient_accumulation_reduction_method = get_enum(
+        "gradient_accumulation_reduction_method",
+        ga.GradientAccumulationReductionMethod.SUM)
+    self._replicated_metric_reduction_method = get_enum(
+        "replicated_metric_reduction_method",
+        ReplicatedMetricReductionMethod.NONE)
     self._pipelining_accumulate_outfeed = config.get(
         "pipelining_accumulate_outfeed", None)
     self._asynchronous_callbacks = config.get("asynchronous_callbacks", False)
@@ -1452,7 +1545,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
         pipeline_iterations = (steps_per_execution //
                                gradient_accumulation_steps_per_replica)
         train_function = train_function_wrapper(
-            pipeline_iterations, gradient_accumulation_steps_per_replica)
+            pipeline_iterations, gradient_accumulation_steps_per_replica,
+            replication_factor)
 
         self._log_steps_per_execution_warning(steps_per_execution)
 
@@ -1652,7 +1746,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
         inferred_steps = data_handler.inferred_steps
         steps_per_execution = data_handler.steps_per_execution_value
 
-        test_function = test_function_wrapper(steps_per_execution)
+        test_function = test_function_wrapper(steps_per_execution,
+                                              replication_factor)
 
         self._log_steps_per_execution_warning(steps_per_execution)
 
@@ -1809,7 +1904,8 @@ class KerasExtensionBase(base_layer.KerasExtension):
         steps_per_execution = data_handler.steps_per_execution_value
         inferred_steps = data_handler.inferred_steps
 
-        predict_function = predict_function_wrapper(steps_per_execution)
+        predict_function = predict_function_wrapper(steps_per_execution,
+                                                    replication_factor)
 
         self._log_steps_per_execution_warning(steps_per_execution)
 
