@@ -472,14 +472,31 @@ replication across available IPU devices. The number of times the model is
 replicated is called the replication factor; higher replication factors allow
 higher data throughput.
 
-When replicating, gradients are reduced across replicas during training, which
-has implications for gradient accumulation. For a non replicated model, the
-*effective batch size* is the product of the dataset batch size and the number
-of gradient accumulation steps. In the case of a replication factor greater than
-one, the *effective batch size* is additionally scaled by the replication
-factor according to the following formula:
+When using replication, gradients are reduced across replicas during training,
+which has implications for gradient accumulation. For a non replicated model,
+the *effective batch size* is the product of the dataset batch size and the
+number of gradient accumulation steps. In the case of a replication factor
+greater than one, the *effective batch size* is additionally scaled by the
+replication factor according to the following formula:
 
 `effective_batch_size = dataset_batch_size * gradient_accumulation_steps_per_replica * num_replicas`
+
+Metrics can also be reduced across replicas. This behaviour must be configured
+by calling the following methods on your model, and specifying a value for
+`replicated_metric_reduction_method`:
+
+.. table::
+  :width: 100%
+
+  +----------------------+---------------------------------------------------------------------------------+
+  | ``Functional`` model | :py:meth:`~keras.ipu.extensions.FunctionalExtension.set_replication_options` |
+  +----------------------+---------------------------------------------------------------------------------+
+  | ``Sequential`` model | :py:meth:`~keras.ipu.extensions.SequentialExtension.set_replication_options` |
+  +----------------------+---------------------------------------------------------------------------------+
+  | ``Model`` subclass   | :py:meth:`~keras.ipu.extensions.ModelExtension.set_replication_options`      |
+  +----------------------+---------------------------------------------------------------------------------+
+
+See the respective API documentation for more details.
 
 Asynchronous callbacks
 ~~~~~~~~~~~~~~~~~~~~~~
