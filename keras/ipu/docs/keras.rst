@@ -724,20 +724,31 @@ Automatic loss scaling
 ~~~~~~~~~~~~~~~~~~~~~~
 
 When training deep learning models, the magnitude of computed gradients is typically significantly smaller than
-their corresponding weights and activations. Whilst rarely causing training issues for models using FP32 
-precision weights, models using reduced precision formats like FP16 are left vulnerable to numerical underflow and vanishing
+their corresponding weights and activations. Whilst rarely causing training issues for models using float32
+precision weights, models using reduced precision formats like float16 are left vulnerable to numerical underflow and vanishing
 gradients. 
 
-Loss scaling aims to combat vanishing gradients by increasing the loss value at the end of the forward 
-pass by some loss scaling factor :math:`{\alpha}`, increasing the magnitude of the computed gradients. 
-The gradients are scaled by the inverse of :math:`{\alpha}` before being applied by the optimizer.
+Loss scaling aims to combat vanishing gradients by multiplying the loss value at the end of the forward
+pass by some loss scaling factor :math:`{\alpha}`. Consequently, gradients obtained through back-propagation are also
+scaled by that constant. The aim is to shift the gradient distribution across the dynamic range,
+so that underflow and overflow are prevented (as much as possible) in float16. Note that the gradients need to be scaled down by the inverse
+of :math:`{\alpha}` before being consumed by the optimizer for the weight update.
 
-Automatic loss scaling (ALS), as included with IPU Keras, eliminates the need for the manual selection of an appropriate 
-value for :math:`{\alpha}`. ALS attempts to continually update :math:`{\alpha}` such that the range of representable 
-values covers, or slightly clips, the largest occuring gradient and extends as far as possible to small gradients. 
-This is achieved by recording the ratio of FP16 gradients whose absolute values exceeed
-`histogram_bin_edge`, and scaling :math:`{\alpha}` either up by `increase_factor` or down by `1 / increase_factor` based on whether this ratio 
-is below or above `ratio_threshold`. These updates to :math:`{\alpha}` occur with a user-specified `update_frequency`.
+Automatic loss scaling (ALS), as included with IPU Keras, eliminates the need for the manual selection of an appropriate
+value for :math:`{\alpha}`. The ALS approach observes the gradients with respect to both weights and activations.
+These observations are used to generate histograms that inform the adjustment of the loss scaling factor, with the aim of
+preventing excessive underflow or overflow in gradient distribution. 
+The proportion of FP16 gradients whose absolute values exceed `histogram_bin_edge` is recorded.
+If this proportion is below `ratio_threshold` then  :math:`{\alpha}` is scaled up by `increase_factor`.  
+Otherwise, it is scaled down by `1 / increase_factor`. These updates to :math:`{\alpha}`
+occur with a user-specified `update_frequency`. For more details and visual examples, see
+`our blogpost about ALS <https://www.graphcore.ai/posts/training-large-models-more-stably-with-automatic-loss-scaling>`_.
+
+.. warning::
+
+  The automatic loss scaling feature in the IPU version of Keras is experimental and may lead to unexpected results.
+  So far it has been validated for the SGD optimizer without momentum and with constant learning rate. You can see an example
+  of it in `our CNNs application <https://github.com/graphcore/examples/tree/master/vision/cnns/tensorflow2>`_.
 
 .. note::
 
