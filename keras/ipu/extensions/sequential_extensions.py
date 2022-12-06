@@ -533,8 +533,6 @@ class SequentialExtension(extensions_base.KerasExtensionBase):  # pylint: disabl
                 layer, layer.get_pipeline_stage_assignment()))
       else:
         output.append(SequentialLayerPipelineStageAssignment(layer))
-    print(self.layers)
-    print(output)
     return output
 
   def _validate_pipeline_stage_assignment(self, pipeline_stage_assignment):
