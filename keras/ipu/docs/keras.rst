@@ -97,7 +97,7 @@ models that do not use pipelining, particularly `gradient_accumulation_steps_per
 and `gradient_accumulation_reduction_method`. See the respective API documentation for more
 details on these arguments.
 
-For pipelined models, these arguments can be passed to the `set_pipelining_options()` methods. See 
+For pipelined models, these arguments can be passed to the `set_pipelining_options()` methods. See
 :numref:`pipelining-options` for more details
 
 .. note::
@@ -488,13 +488,13 @@ by calling the following methods on your model, and specifying a value for
 .. table::
   :width: 100%
 
-  +----------------------+---------------------------------------------------------------------------------+
+  +----------------------+------------------------------------------------------------------------------+
   | ``Functional`` model | :py:meth:`~keras.ipu.extensions.FunctionalExtension.set_replication_options` |
-  +----------------------+---------------------------------------------------------------------------------+
+  +----------------------+------------------------------------------------------------------------------+
   | ``Sequential`` model | :py:meth:`~keras.ipu.extensions.SequentialExtension.set_replication_options` |
-  +----------------------+---------------------------------------------------------------------------------+
+  +----------------------+------------------------------------------------------------------------------+
   | ``Model`` subclass   | :py:meth:`~keras.ipu.extensions.ModelExtension.set_replication_options`      |
-  +----------------------+---------------------------------------------------------------------------------+
+  +----------------------+------------------------------------------------------------------------------+
 
 See the respective API documentation for more details.
 
@@ -539,7 +539,7 @@ Instances of :py:class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue` 
 :py:class:`~tensorflow.python.ipu.ipu_outfeed_queue.OutfeedQueue` can be created with optional arguments
 which can affect performance of the model.
 
-Use the following methods to configure the 
+Use the following methods to configure the
 :py:class:`~tensorflow.python.ipu.ipu_infeed_queue.IPUInfeedQueue` for your Keras model:
 
 .. table::
@@ -726,7 +726,7 @@ Automatic loss scaling
 When training deep learning models, the magnitude of computed gradients is typically significantly smaller than
 their corresponding weights and activations. Whilst rarely causing training issues for models using float32
 precision weights, models using reduced precision formats like float16 are left vulnerable to numerical underflow and vanishing
-gradients. 
+gradients.
 
 Loss scaling aims to combat vanishing gradients by multiplying the loss value at the end of the forward
 pass by some loss scaling factor :math:`{\alpha}`. Consequently, gradients obtained through back-propagation are also
@@ -737,9 +737,9 @@ of :math:`{\alpha}` before being consumed by the optimizer for the weight update
 Automatic loss scaling (ALS), as included with IPU Keras, eliminates the need for the manual selection of an appropriate
 value for :math:`{\alpha}`. The ALS approach observes the gradients with respect to both weights and activations.
 These observations are used to generate histograms that inform the adjustment of the loss scaling factor, with the aim of
-preventing excessive underflow or overflow in gradient distribution. 
+preventing excessive underflow or overflow in gradient distribution.
 The proportion of FP16 gradients whose absolute values exceed `histogram_bin_edge` is recorded.
-If this proportion is below `ratio_threshold` then  :math:`{\alpha}` is scaled up by `increase_factor`.  
+If this proportion is below `ratio_threshold` then  :math:`{\alpha}` is scaled up by `increase_factor`.
 Otherwise, it is scaled down by `1 / increase_factor`. These updates to :math:`{\alpha}`
 occur with a user-specified `update_frequency`. For more details and visual examples, see
 `our blogpost about ALS <https://www.graphcore.ai/posts/training-large-models-more-stably-with-automatic-loss-scaling>`_.
@@ -760,7 +760,7 @@ The continual updating of :math:`{\alpha}` has the added benefit, as compared to
 allowing the optimizer to adapt to changes in the distribution of magnitudes of gradients during training.
 
 In IPU Keras, ALS can be added to any `OptimizerV2`-derived Keras optimizer through the
-:py:class:`~keras.ipu.optimizers.ALSOptimizer` wrapper. The example below illustrates how the :py:class:`~keras.ipu.optimizers.ALSOptimizer` 
+:py:class:`~keras.ipu.optimizers.ALSOptimizer` wrapper. The example below illustrates how the :py:class:`~keras.ipu.optimizers.ALSOptimizer`
 wrapper can be used to add ALS functionality to a standard SGD optimizer and train a model.
 
 .. literalinclude:: als_example1.py
@@ -776,7 +776,7 @@ custom TensorFlow training loops, as shown in the example below.
   :linenos:
   :emphasize-lines: 20
 
-The following example shows how ALS can be combined with gradient accumulation 
+The following example shows how ALS can be combined with gradient accumulation
 (outlined in :numref:`gradient-accumulation`) in order to simulate larger batch sizes.
 
 .. literalinclude:: als_example2.py
@@ -785,12 +785,12 @@ The following example shows how ALS can be combined with gradient accumulation
   :emphasize-lines: 24, 27-28
 
 The combination of ALS and gradient accumulation does not require the use of `keras.Model`, however. The example
-below illustrates how :py:class:`~keras.ipu.optimizers.ALSGradientAccumulationOptimizer` can be used to provide 
+below illustrates how :py:class:`~keras.ipu.optimizers.ALSGradientAccumulationOptimizer` can be used to provide
 any `OptimizerV2`-derived Keras optimizer with both ALS and gradient accumulation.
 
 .. note::
 
-  In order to use :py:class:`~keras.ipu.optimizers.ALSGradientAccumulationOptimizer`, the target optimizer must first be wrapped with 
+  In order to use :py:class:`~keras.ipu.optimizers.ALSGradientAccumulationOptimizer`, the target optimizer must first be wrapped with
   :py:class:`~keras.ipu.optimizers.ALSOptimizer`.
 
 .. literalinclude:: als_example2_non_keras.py
@@ -798,12 +798,12 @@ any `OptimizerV2`-derived Keras optimizer with both ALS and gradient accumulatio
   :linenos:
   :emphasize-lines: 22-23
 
-While it is ultimately the gradients with respect to weights and biases which are used to update the parameters of a model, 
+While it is ultimately the gradients with respect to weights and biases which are used to update the parameters of a model,
 gradients with respect to layer activations are also computed during each backward pass. It is possible that these gradients
-might saturate, thus losing information, without this being detected in upstream parameter gradients. 
+might saturate, thus losing information, without this being detected in upstream parameter gradients.
 
-By wrapping a Keras 
-layer in the `CaptureActivationGradients` wrapper, these intermediate activation gradients can be recorded and added to the 
+By wrapping a Keras
+layer in the `CaptureActivationGradients` wrapper, these intermediate activation gradients can be recorded and added to the
 statistics used to determine whether to increase or decrease :math:`{\alpha}`. The example below shows how the activation
 gradients of select layers can be incorporated into an :py:class:`~keras.ipu.optimizers.ALSOptimizer`. In order to reduce the computational cost of ALS,
 the `update_frequency` is increased to 5 (from its default value of 1), and the `accumulate_statistics_over_update_period`
