@@ -82,13 +82,13 @@ class ReplicatedMetricReductionMethod(enum.Enum):
   across multiple replicas.
 
   * NONE: Do not perform any reduction. Return the metric values from the last
-          replica.
+    replica.
   * LIST: For each metric return a list containing the values from every
-          replica. When using this option, the Keras progress bar output will
-          show the mean of the list values.
+    replica. When using this option, the Keras progress bar output will
+    show the mean of the list values.
   * SUM: Return a sum of the metric values from each replica.
   * MEAN: Return a sum of the metric values from each replica,
-          scaled by (`1/num_replicas`).
+    scaled by (`1/num_replicas`).
   """
   NONE = 1
   LIST = 2
