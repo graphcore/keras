@@ -236,6 +236,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
   @tf.__internal__.tracking.no_automatic_dependency_tracking
   def __init__(self):
     # Following values need to be serializable.
+    self._tf_cpp_min_vlog_level = int(os.getenv("TF_CPP_MIN_VLOG_LEVEL", "0"))
 
     # Pipelining.
     self._pipelining_gradient_accumulation_steps_per_replica = None
@@ -247,6 +248,7 @@ class KerasExtensionBase(base_layer.KerasExtension):
     # Gradient accumulation.
     self._gradient_accumulation_steps_per_replica = None
     self._gradient_accumulation_optimizer_kwargs = dict()
+    self._show_gradient_accumulation_optimizer_kwargs_info = True
     self._gradient_accumulation_reduction_method = \
       ga.GradientAccumulationReductionMethod.SUM
     self._use_v2_gradient_accumulation_optimizer = False
@@ -1351,11 +1353,16 @@ class KerasExtensionBase(base_layer.KerasExtension):
     config["asynchronous_callbacks"] = self._asynchronous_callbacks
 
     if self._gradient_accumulation_optimizer_kwargs:
-      logging.info(
-          "Calling get_config() on {} - "
-          "`gradient_accumulation_optimizer_kwargs` cannot be serialized and "
-          "you will need to call `set_gradient_accumulation_options` again if "
-          "the model is restored.".format(self.name))
+      if self._tf_cpp_min_vlog_level > 0 and \
+          self._show_gradient_accumulation_optimizer_kwargs_info:
+        logging.info(
+            "Calling get_config() on {} - "
+            "`gradient_accumulation_optimizer_kwargs` cannot be serialized and "
+            "you will need to call `set_gradient_accumulation_options` again if"
+            " the model is restored. Further displays of this info is "
+            "suppressed.".format(self.name))
+        # suppress further displays of this info
+        self._show_gradient_accumulation_optimizer_kwargs_info = False
 
     config["pipelining_gradient_accumulation_steps_per_replica"] = \
       self._pipelining_gradient_accumulation_steps_per_replica
